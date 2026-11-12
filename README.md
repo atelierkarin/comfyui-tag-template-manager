@@ -1,72 +1,68 @@
 # ComfyUI Tag Template Manager
 
-タグテンプレートをローカルで管理し、ComfyUI のワークフローで組み合わせるためのカスタムノードです。仕様は [設計書](docs/ComfyUI_Tag_Template_Manager_Design_v1.md) を参照してください。
+[English](README.en.md) | 日本語
 
-## 現在の状態
+キャラクター、衣装、背景、品質タグなどをローカルのテンプレートとして管理する ComfyUI カスタムノードです。再利用したいタグをブロックに分け、ワークフローごとに選択してプロンプトを組み立てられます。
 
-Core、`Tag Template` / `Tag Main` ノード、テンプレート編集画面、保存・プレビュー API を実装しています。ComfyUI 0.22.0 のノード実行経路は確認済みですが、ブラウザー上での UI 操作確認は未完了です。
+## 主な機能
 
-## 開発環境
+- テンプレートとブロックの作成、編集、複製、並べ替え、削除
+- ブロックの有効／無効切り替えと、選択状態をまとめて適用するプリセット
+- Positive／Negative の個別管理と、チャンネルごとの排他グループ
+- 複数テンプレートと自由入力の結合、一時的なタグ除外、結合結果のプレビュー
+- `Tag Template` からの STRING 直接出力と、ワークフローへの選択状態の保存
 
-- 確認した環境: ComfyUI 0.22.0、Windows ポータブル版の Python 3.13.12
-- プロジェクトの Python 要件: 3.10 以上（ComfyUI に合わせる）
-- 現時点では追加の Python パッケージは不要です。
+## インストール
 
-このリポジトリから、ポータブル版に同梱された Python を使ってテストを実行できます。以下は現在の環境の PowerShell での例です。
+ComfyUI の `custom_nodes` フォルダーで、このリポジトリをクローンします。
 
-```powershell
-& "D:/apps/ComfyUI_windows_portable/python_embeded/python.exe" -m unittest discover -s tests -v
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/atelierkarin/comfyui-tag-template-manager.git
 ```
 
-JavaScript を検証する場合は Node.js で `node tests/test_state.mjs`、`node tests/test_editor.mjs`、`node tests/test_editor_ui.mjs`、`node tests/test_template_ui.mjs` を実行します。UI テストは簡易 DOM での検証です。
+ComfyUI を再起動し、ブラウザーを再読み込みしてください。ノードは `Tag Template Manager` カテゴリーに表示されます。
 
-別の環境では、その環境の Python で `python -m unittest discover -s tests -v` を実行してください。実装時には対象の ComfyUI でノードの読み込みと UI も確認してください。
+ComfyUI 0.22.0 で動作を確認しています。Python 3.10 以上が必要です。追加の Python パッケージは不要です。現在は ComfyUI の単一ユーザーモードに対応しています。
 
-## ディレクトリ
+## 基本的な使い方
 
-- `services/`: データ検証、保存、プロンプト結合などの独立した処理
-- `api/`: ComfyUI サーバー向け API
-- `web/`: ComfyUI フロントエンド拡張
-- `tests/`: 標準ライブラリ `unittest` によるテスト
+1. `Tag Template` ノードを追加し、**Edit library** を開きます。
+2. **New** でテンプレートを作成し、名前とタグのブロックを追加して **Save** します。必要に応じてプリセットも作成できます。
+3. テンプレートを選び、使用するブロックにチェックを入れます。プリセットを選択した後も、個別に変更できます。選択状態はノードごとにワークフローに保存されます。
+4. そのまま使う場合は、`Tag Template` の `positive` または `negative` 出力を、CLIP Text Encode などの STRING 入力に接続します。
+5. 複数テンプレートや自由入力を組み合わせる場合は、各 `bundle` 出力を `Tag Main` に接続します。`channel` で `positive` または `negative` を選び、必要なタグを `text` に入力します。Positive と Negative の両方が必要な場合は、`Tag Main` をそれぞれ用意します。
 
-Core の詳細は [Core 設計書](docs/ComfyUI_Tag_Template_Manager_Core_Design_v1.md)、ノードは [Nodes 設計書](docs/ComfyUI_Tag_Template_Manager_Nodes_Design_v1.md)、編集画面は [Editor 設計書](docs/ComfyUI_Tag_Template_Manager_Editor_Design_v1.md) を参照してください。今後は Stability を進めます。
+`Tag Main` の **Update preview** で結合結果を確認できます。入力や接続、テンプレートを変更した後は再度更新してください。プレビューは `Tag Template` と通常の Reroute からの接続に対応しています。自由入力などのウィジェットを外部ノードに接続した場合は、プレビューでは評価できません。
 
-## ノードの使用方法
+### ブロックとプリセット
 
-このリポジトリを ComfyUI の `custom_nodes/comfyui-tag-template-manager` に配置し、単一ユーザーモードで ComfyUI を再起動すると、`Tag Template Manager` カテゴリーに 2 つのノードが表示されます。マルチユーザーモードは現在未対応で、利用時にエラーになります。
+各ブロックに Positive／Negative、既定の ON／OFF、任意の排他グループを設定できます。同じ排他グループでは、同じチャンネル内で一度に 1 ブロックだけを有効にできます。Positive と Negative は別々に判定されます。
 
-1. `Tag Template` を追加し、`Edit library` からエディターを開きます。`New` で作成し、名前・ブロック・プリセットを入力して `Save` します。テンプレートの ID は新規保存前に設定できます。保存後は固定されます。
-2. エディターではテンプレートの名前・ID・カテゴリーによる検索、保存、`Save As / Duplicate`、削除、ブロックの追加・複製・並べ替え、プリセットの編集ができます。各ブロックは見出しをクリックすると折りたためます。テンプレート選択時は、プリセットがなくても各ブロックの既定 ON / OFF が使われます。選択はノードごとにワークフローへ保存されます。
-3. 出力を `Tag Main` の `bundle_1`〜`bundle_8` に接続し、`channel` で `positive` または `negative` を選び、必要に応じて `text` に自由入力を追加します。Positive 用と Negative 用に `Tag Main` をそれぞれ配置し、各 STRING 出力を対応する CLIP Text Encode に接続します。
-4. `Update preview` で現在の結合内容を確認できます。プレビューは手動更新です。入力、接続、またはテンプレートを変更した後は再度更新してください。プレビューは Template Node と通常の Reroute の接続を対象とし、自由入力ウィジェットを外部ノードに接続した場合は利用できません。
+テンプレートを初めて選択したときは各ブロックの既定状態が使われます。プリセットは必須ではありません。エディターでは、ブロックの見出しをクリックすると内容を折りたためます。
 
-`Tag Main` の `exclude` に一時的に取り除きたいタグをカンマまたは改行区切りで入力できます。たとえば `ribbon` は `ribbon` というタグを除外します。大文字・小文字は区別しません。タグ全体が一致する場合だけ除外するため、`hair ribbon` や `(ribbon:1.2)` は残ります。括弧やエスケープを含む複雑な構文は安全のため変更せず、不正に閉じられていない断片もそのまま残します。除外は選択した Main の出力と自由入力に適用され、テンプレート自体は変更されません。
+### 一時的なタグ除外
 
-Template と Main の出力では、カンマ区切りの前後や平文タグ内の余分な空白・改行を整えます。括弧内などの複雑な構文は保持します。排他グループは Positive と Negative を別々に判定するため、同じグループ名でも各チャンネルから 1 ブロックずつ選べます。
+`Tag Main` の `exclude` に除外したい平文タグをカンマまたは改行区切りで入力します。テンプレート自体は変更されません。
 
-`Tag Template` の `positive` / `negative` STRING 出力は、現在 ON のブロックをそれぞれ結合したものです。`Tag Main` を経由せず、CLIP Text Encode や Inspire Pack の Regional Conditioning By Color Mask の `prompt` など、STRING 入力に直接接続できます。対象のテキスト欄に入力端子がない場合は、ComfyUI のウィジェットを入力端子に変換して接続してください。これは実行時の値の接続で、テキスト欄へのコピーではありません。
+たとえば `ribbon` を指定すると、`ribbon` は除外されます。大文字・小文字は区別しません。タグ全体が一致する場合に限るため、`hair ribbon` や `(ribbon:1.2)` は除外されません。括弧やエスケープを含む複雑な構文は保守的に扱います。
 
-テンプレートが欠損・破損した場合は実行を停止します。編集後の更新時は、残っているブロックの選択を維持し、追加されたブロックには Default を適用します。既存選択と同じチャンネル・排他グループで競合する新規ブロックは OFF にします。既存選択同士が矛盾する場合はリセットまたはプリセットを再適用してください。Live モードのため、テンプレートを編集すると同じワークフローでも出力が変わります。
+## 保存と再現性
 
-保存先は ComfyUI のユーザーディレクトリ内の `default/tag_templates/` です（標準設定では `ComfyUI/user/default/tag_templates/`）。同じテンプレートを複数画面や外部ツールで同時編集した場合の競合検出はまだありません。インポート／エクスポート画面とバックアップは後続段階です。
+テンプレートは ComfyUI のユーザーディレクトリ内の `default/tag_templates/` に、テンプレートごとの JSON ファイルとして保存されます。標準設定での場所は `ComfyUI/user/default/tag_templates/` です。バックアップや移行には、このフォルダーをコピーしてください。
 
-### API
+現在は **Live モード**です。ワークフローは実行時に最新のテンプレートを読み込むため、ライブラリの編集により過去のワークフローの出力が変わることがあります。テンプレートが欠損・破損した場合は、空の結果に置き換えずエラーを表示します。
 
-- `GET /tag-template-manager/templates`：`{"templates": [{"id", "name", "category"}]}`
-- `GET /tag-template-manager/templates/{id}`：検証済みテンプレート JSON
-- `POST /tag-template-manager/templates`：テンプレート JSON を新規作成。既存 ID は 409。
-- `PUT /tag-template-manager/templates/{id}`：同じ ID の既存テンプレートを更新。
-- `DELETE /tag-template-manager/templates/{id}`：既存テンプレートを削除。
-- `POST /tag-template-manager/preview-single`：`{"states": [...], "channel": "positive", "text": "", "deduplicate": false, "exclude": ""}` を受け取り、選択されたチャンネルの `{"text": "..."}` を返す。各 state は `version`, `template_id`, `preset_id`, `blocks` を持つ。`exclude` は省略可能。
+テンプレートの編集後は、既存ブロックの選択を維持し、新しいブロックに既定状態を適用します。既存選択と同じチャンネル・排他グループで競合する新規ブロックは OFF になります。
 
-エラーは `{"error": "..."}` で返します。未対応のユーザーモードは 403、未存在は 404、ID 衝突は 409、入力不正は 400、ライブラリ読み書き失敗は 500 です。
+## 現在の制限
 
-## Core の使い方
+- マルチユーザーモード、Snapshot、画面からのインポート／エクスポートには未対応です。
+- 同じテンプレートを複数の画面や外部ツールから同時編集した場合の競合検出はありません。
+- 出力の空白や区切りは整えますが、複雑なプロンプト構文の意味解析は行いません。重複除去は安全に扱える平文タグに限定されます。
 
-`services.schema.validate_template(data)` で JSON 相当の辞書を検証し、コピーを取得できます。`services.template_store.TemplateStore(directory)` は保存先を明示的に受け取り、`create(data)`、`load(id)`、`list()`、`update(data)`、`delete(id)` を提供します。
+開発・テスト情報は [AGENTS.md](AGENTS.md)、設計資料は [docs](docs/) を参照してください。
 
-`services.prompt_builder` の `default_selection(template)`、`apply_preset(template, preset_id)`、`set_block(template, selection, block_id, enabled)` は独立した選択状態を返します。`build_prompts([(template, selection), ...], positive='', negative='', deduplicate=False)` は接続順の入力から Positive と Negative の文字列を返します。これらは ComfyUI 本体を起動せず使用できます。
+## ライセンス
 
-## Git について
-
-GitHub リポジトリは `atelierkarin/comfyui-tag-template-manager` です。開発用のリポジトリと ComfyUI が読み込む配置先を分ける場合は、変更をテストする前に配置先へ反映してください。
+[MIT License](LICENSE)
