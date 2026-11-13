@@ -37,6 +37,18 @@ class NodeServiceTests(unittest.TestCase):
             store.delete('test')
             with self.assertRaises(NotFoundError): make_bundle(store, decode_state(state()))
 
+    def test_snapshot_remains_usable_when_library_changes_or_disappears(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); template = sample(); store.create(template)
+            saved = json.loads(state())
+            saved.update(version=2, template=template)
+            decoded = decode_state(json.dumps(saved))
+            store.delete('test')
+            bundle = make_bundle(store, decoded)
+            self.assertEqual(compose([bundle]), ('cat, dog', 'bad'))
+            invalid = dict(saved); invalid['template'] = dict(template, id='wrong')
+            with self.assertRaises(ValueError): make_bundle(store, invalid)
+
     def test_multiplayer_rejected(self):
         with temporary_directory() as root:
             with self.assertRaises(UnsupportedModeError): store_for_user(root, True)

@@ -49,16 +49,20 @@ For example, `ribbon` removes a `ribbon` tag regardless of case. Only whole tags
 
 ## Storage and reproducibility
 
-Templates are stored as individual JSON files under `default/tag_templates/` in the ComfyUI user directory. With the default configuration, this is `ComfyUI/user/default/tag_templates/`. Copy that directory to back up or move your library.
+Templates are stored as individual JSON files under `default/tag_templates/` in the ComfyUI user directory. With the default configuration, this is `ComfyUI/user/default/tag_templates/`. Copy that directory to back up the entire library.
 
-The current implementation uses **Live mode**: workflows read the latest template at execution time, so editing a library can change the output of an existing workflow. Missing or corrupt templates produce an error rather than silently returning empty text.
+Use **Export saved** in the editor to download a saved template as JSON, and **Import** to load a UTF-8 JSON file up to 1 MiB. Copy the library folder to move templates larger than 1 MiB. Unsaved edits are not exported. If the ID already exists, choose a different ID or cancel; existing templates are not overwritten and workflows keep referencing their original IDs.
+
+Before saving or deleting a template, the editor keeps its previous contents in `tag_templates/.backups/`. Use **Restore backup** to select a template ID and a backup by time and name. Backups are not automatically deleted; include them in your library backups and manage disk usage as needed. On an edit conflict, the draft remains available: use **Save As / Duplicate** to save it under a new ID or **Reload saved** to discard it and load the current version. Concurrent edits by external tools cannot be prevented completely.
+
+The default is **Live mode**: workflows read the latest template at execution time, so editing a library can change the output of an existing workflow. Missing or corrupt templates produce an error rather than silently returning empty text. **Create snapshot** saves the template and selection in the workflow, independently of later library changes or removal. **Update snapshot** copies the current library version, and **Switch to Live** returns to Live mode. A snapshot shares template contents with anyone receiving the workflow and cannot be used by older versions of the plugin.
 
 After a template is edited, existing block selections are retained and new blocks use their defaults. A new block is disabled if its default would conflict with an existing selection in the same channel and exclusive group.
 
 ## Current limitations
 
-- Multi-user mode, snapshots, and import/export through the editor are not supported yet.
-- Concurrent edits to the same template from multiple screens or external tools are not detected.
+- Multi-user mode is not supported yet.
+- Detection of concurrent changes by external tools has limitations.
 - Output whitespace and separators are tidied, but complex prompt syntax is not interpreted. Deduplication is limited to plain tags that can be handled safely.
 
 See [AGENTS.md](AGENTS.md) for development and testing information and [docs](docs/) for design documents.

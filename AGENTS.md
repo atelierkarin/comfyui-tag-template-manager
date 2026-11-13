@@ -1,5 +1,7 @@
 # Development guide
 
+For the latest handoff and candidate next-phase work, see [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).
+
 ## Project
 
 ComfyUI custom node with a Python backend and JavaScript frontend. Python 3.10+ is required; ComfyUI supplies `aiohttp` for the HTTP API. The core services use the standard library. ComfyUI 0.22.0 and Python 3.13 have been used for integration testing.
