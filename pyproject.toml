@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-tag-template-manager"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Local tag template management for ComfyUI"
 requires-python = ">=3.10"
 dependencies = []
