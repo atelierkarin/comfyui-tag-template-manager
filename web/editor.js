@@ -15,6 +15,7 @@ export function openEditor({ request, selectedId, onChanged }) {
     Object.assign(fieldset.style, { border: '0', margin: '0', padding: '0' });
     const heading = el('h2', 'Tag Template Editor');
     const status = el('div', '');
+    const libraryWarning = el('div', ''); libraryWarning.style.color = '#ff9999';
     status.setAttribute('role', 'status');
     const controls = el('div');
     const search = el('input'); search.placeholder = 'Search name, ID, category'; search.type = 'search';
@@ -28,9 +29,9 @@ export function openEditor({ request, selectedId, onChanged }) {
         const item = el('button', label); item.type = 'button'; item.onclick = callback; parent.append(item); return item;
     };
     controls.append(search, list);
-    fieldset.append(heading, status, controls, buttons, body);
+    fieldset.append(heading, status, libraryWarning, controls, buttons, body);
     dialog.append(fieldset); document.body.append(dialog);
-    let templates = [], draft = null, savedId = null, dirty = false, busy = false;
+    let templates = [], draft = null, savedId = null, revision = null, dirty = false, busy = false;
     const expandedBlocks = new Set();
     const beforeUnload = event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', beforeUnload);
@@ -64,17 +65,19 @@ export function openEditor({ request, selectedId, onChanged }) {
         list.value = templates.some(item => item.id === savedId) ? savedId : '';
     }
     async function refreshList() {
-        templates = (await request('/templates')).templates;
+        const result = await request('/templates');
+        templates = result.templates;
+        libraryWarning.textContent = result.problems?.length ? `Cannot read template files: ${result.problems.join(', ')}. Check the server log or restore a backup.` : '';
         refreshOptions();
     }
-    function changeDraft(value, id = null, isDirty = false) {
+    function changeDraft(value, id = null, isDirty = false, nextRevision = null) {
         if (savedId !== id) expandedBlocks.clear();
-        draft = value; savedId = id; dirty = isDirty; render(); refreshOptions();
+        draft = value; savedId = id; revision = nextRevision; dirty = isDirty; render(); refreshOptions();
         report(isDirty ? 'Unsaved changes' : id ? `Editing ${id}` : 'Select or create a template.');
     }
     async function load(id) {
-        const data = await request(`/templates/${encodeURIComponent(id)}`);
-        changeDraft(data, id);
+        const data = await request(`/editor/${encodeURIComponent(id)}`);
+        changeDraft(data.template, id, false, data.revision);
     }
     search.oninput = refreshOptions;
     list.onchange = () => {
@@ -88,12 +91,23 @@ export function openEditor({ request, selectedId, onChanged }) {
     });
     button('Save', () => run(async () => {
         if (!draft) throw new Error('Create or select a template first.');
-        const data = await request(savedId ? `/templates/${encodeURIComponent(savedId)}` : '/templates', {
-            method: savedId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
-        });
-        changeDraft(data, data.id);
+        if (savedId) {
+            const result = await request(`/editor/${encodeURIComponent(savedId)}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template: draft, revision }),
+            });
+            changeDraft(result.template, savedId, false, result.revision);
+        } else {
+            const data = await request('/templates', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+            });
+            await load(data.id);
+        }
         onChanged?.(); await refreshList(); report('Saved.');
     }));
+    button('Reload saved', () => {
+        if (!savedId) { report('Select a saved template first.', true); return; }
+        if (confirmDiscard()) run(() => load(savedId));
+    });
     button('Save As / Duplicate', () => {
         if (!draft) { report('Create or select a template first.', true); return; }
         const nextId = window.prompt('New template ID (letters, digits, _ or -):', generateId('template'));
@@ -101,15 +115,72 @@ export function openEditor({ request, selectedId, onChanged }) {
         run(async () => {
             const duplicate = structuredClone(draft); duplicate.id = nextId;
             const data = await request('/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(duplicate) });
-            changeDraft(data, data.id);
+            await load(data.id);
             onChanged?.(); await refreshList(); report('Saved as a new template.');
+        });
+    });
+    const importFile = el('input');
+    importFile.type = 'file'; importFile.accept = '.json,application/json'; importFile.style.display = 'none';
+    fieldset.append(importFile);
+    button('Import', () => {
+        if (!confirmDiscard()) return;
+        importFile.value = '';
+        importFile.click();
+    });
+    importFile.onchange = () => run(async () => {
+        const file = importFile.files?.[0];
+        if (!file) return;
+        if (file.size > 1024 * 1024) throw new Error('Import file exceeds 1 MiB.');
+        const bytes = await file.arrayBuffer();
+        const send = id => request('/import', { method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream', ...(id ? { 'X-Template-ID': id } : {}) }, body: bytes });
+        let data;
+        try { data = await send(); }
+        catch (error) {
+            if (error.status !== 409) throw error;
+            const id = window.prompt('Template ID exists. Enter a new ID to import a separate copy, or cancel:');
+            if (id == null) return;
+            data = await send(id);
+        }
+        await load(data.id);
+        onChanged?.(); await refreshList();
+        report('Imported. Existing workflows keep their original template ID.');
+    });
+    button('Export saved', () => run(async () => {
+        if (!savedId) throw new Error('Select a saved template first.');
+        const data = await request(`/templates/${encodeURIComponent(savedId)}`);
+        const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
+        if (blob.size > 1024 * 1024) throw new Error('Saved template exceeds 1 MiB; copy the library folder instead.');
+        const url = URL.createObjectURL(blob);
+        const link = el('a'); link.href = url; link.download = `${data.id}.json`;
+        document.body.append(link); link.click(); link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        report(dirty ? 'Exported saved version; unsaved changes remain.' : 'Exported saved version.');
+    }));
+    button('Restore backup', () => {
+        if (!confirmDiscard()) return;
+        const id = window.prompt('Template ID to restore:', savedId || '');
+        if (!id) return;
+        run(async () => {
+            const details = await request(`/backups/${encodeURIComponent(id)}`);
+            if (!details.backups.length) throw new Error('No backups found for this template.');
+            const options = details.backups.map((item, i) => `${i + 1}: ${item.created} ? ${item.name || '[invalid backup]'} (${item.id})`);
+            const choice = window.prompt(`Choose a backup number:\n${options.join('\n')}`);
+            if (choice == null) return;
+            const index = Number(choice);
+            if (!Number.isInteger(index) || index < 1 || index > details.backups.length) throw new Error('Invalid backup number.');
+            const backup = details.backups[index - 1].id;
+            if (!window.confirm(`Restore backup ${backup} for ${id}? The current file will be backed up first.`)) return;
+            await request(`/backups/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ backup_id: backup, revision: details.revision }) });
+            await load(id); onChanged?.(); await refreshList(); report('Backup restored.');
         });
     });
     button('Delete', () => {
         if (!savedId) { report('Select a saved template first.', true); return; }
         if (!confirmDiscard() || !window.confirm(`Delete template ${savedId}? This cannot be undone.`)) return;
         run(async () => {
-            await request(`/templates/${encodeURIComponent(savedId)}`, { method: 'DELETE' });
+            await request(`/editor/${encodeURIComponent(savedId)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision }) });
             changeDraft(null); onChanged?.(); await refreshList(); report('Deleted.');
         });
     });

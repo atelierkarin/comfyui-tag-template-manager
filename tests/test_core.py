@@ -59,6 +59,61 @@ class SchemaTests(unittest.TestCase):
 
 
 class StoreTests(unittest.TestCase):
+    def test_guarded_update_detects_conflict_and_keeps_backups(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); data = sample(); store.create(data)
+            current, revision = store.load_versioned('test')
+            changed = sample(); changed['name'] = 'first'
+            store.update_guarded(changed, revision)
+            self.assertEqual(store.load('test')['name'], 'first')
+            with self.assertRaises(StoreError):
+                store.update_guarded(current, revision)
+            self.assertEqual(store.load('test')['name'], 'first')
+            backups = store.list_backups('test')
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(store.load_backup('test', backups[0])['name'], current['name'])
+
+    def test_restore_preserves_corrupt_bytes_and_rejects_stale_state(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            _, revision = store.load_versioned('test')
+            changed = sample(); changed['name'] = 'changed'
+            store.update_guarded(changed, revision)
+            backup = store.list_backups('test')[0]
+            path = Path(root) / 'test.json'; path.write_bytes(b'{bad')
+            token = store.current_revision('test')
+            with self.assertRaises(StoreError): store.restore_backup('test', backup, revision)
+            self.assertEqual(path.read_bytes(), b'{bad')
+            store.restore_backup('test', backup, token)
+            self.assertEqual(store.load('test')['name'], sample()['name'])
+            self.assertIn(b'{bad', [p.read_bytes() for p in (Path(root) / '.backups').glob('test.*.bak')])
+
+    def test_incomplete_backup_is_never_published(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            _, revision = store.load_versioned('test')
+            with patch('services.template_store.os.fsync', side_effect=OSError('disk full')):
+                with self.assertRaises(StoreError): store.update_guarded(sample(), revision)
+            self.assertEqual(store.list_backups('test'), [])
+            self.assertEqual(store.load('test'), sample())
+
+    def test_backup_failure_does_not_change_original(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            _, revision = store.load_versioned('test')
+            changed = sample(); changed['name'] = 'changed'
+            with patch.object(store, '_backup', side_effect=StoreError('disk full')):
+                with self.assertRaises(StoreError): store.update_guarded(changed, revision)
+            self.assertEqual(store.load('test'), sample())
+
+    def test_report_keeps_valid_templates_when_another_is_corrupt(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            (Path(root) / 'broken.json').write_text('{', encoding='utf-8')
+            valid, problems = store.list_report()
+            self.assertEqual([item['id'] for item in valid], ['test'])
+            self.assertEqual(problems, ['broken'])
+
     def test_lifecycle_and_errors(self):
         with temporary_directory() as root:
             store = TemplateStore(root); data = sample()

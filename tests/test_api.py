@@ -119,19 +119,88 @@ class ApiTests(unittest.TestCase):
             with patch.object(routes, 'current_store', return_value=store):
                 self.assertEqual(asyncio.run(routes.create_template(Request(sample()))).status, 201)
                 self.assertEqual(asyncio.run(routes.create_template(Request(sample()))).status, 409)
+                revision = json.loads(asyncio.run(routes.get_editable(Request())).text)['revision']
                 changed = sample(); changed['name'] = 'Changed'
-                self.assertEqual(asyncio.run(routes.update_template(Request(changed))).status, 200)
+                updated = asyncio.run(routes.save_editable(Request({'template': changed, 'revision': revision})))
+                self.assertEqual(updated.status, 200)
+                revision = json.loads(updated.text)['revision']
                 self.assertEqual(store.load('test')['name'], 'Changed')
-                self.assertEqual(asyncio.run(routes.update_template(Request(changed, 'other'))).status, 400)
+                self.assertEqual(asyncio.run(routes.save_editable(Request({'template': changed, 'revision': revision}, 'other'))).status, 400)
                 invalid = sample(); invalid['name'] = ''
-                self.assertEqual(asyncio.run(routes.update_template(Request(invalid))).status, 400)
+                self.assertEqual(asyncio.run(routes.save_editable(Request({'template': invalid, 'revision': revision}))).status, 400)
                 self.assertEqual(store.load('test')['name'], 'Changed')
-                self.assertEqual(asyncio.run(routes.delete_template(Request())).status, 200)
-                self.assertEqual(asyncio.run(routes.delete_template(Request())).status, 404)
+                self.assertEqual(asyncio.run(routes.delete_editable(Request({'revision': revision}))).status, 200)
+                self.assertEqual(asyncio.run(routes.delete_editable(Request({'revision': revision}))).status, 404)
+
+    def test_import_rejects_bad_data_and_preserves_existing(self):
+        class RawRequest:
+            def __init__(self, raw, replacement=None):
+                self.raw = raw
+                self.headers = {'X-Template-ID': replacement} if replacement else {}
+                self.content = self
+            async def read(self, size):
+                chunk, self.raw = self.raw[:size], self.raw[size:]
+                return chunk
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            raw = json.dumps(sample(), ensure_ascii=False).encode('utf-8')
+            with patch.object(routes, 'current_store', return_value=store):
+                self.assertEqual(asyncio.run(routes.import_template(RawRequest(raw))).status, 409)
+                for bad in (b'\xff', b'{"id":1,"id":2}', b'x' * (1024 * 1024 + 1)):
+                    self.assertEqual(asyncio.run(routes.import_template(RawRequest(bad))).status, 400)
+                result = asyncio.run(routes.import_template(RawRequest(raw, 'copy')))
+                self.assertEqual(result.status, 201)
+                self.assertEqual(store.load('copy')['blocks'], sample()['blocks'])
+                self.assertEqual(store.load('test'), sample())
+
+    def test_editor_version_conflict_preserves_newer_change(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            with patch.object(routes, 'current_store', return_value=store):
+                loaded = json.loads(asyncio.run(routes.get_editable(Request())).text)
+                changed = sample(); changed['name'] = 'first'
+                result = asyncio.run(routes.save_editable(Request({'template': changed, 'revision': loaded['revision']})))
+                self.assertEqual(result.status, 200)
+                stale = sample(); stale['name'] = 'stale'
+                result = asyncio.run(routes.save_editable(Request({'template': stale, 'revision': loaded['revision']})))
+                self.assertEqual(result.status, 409)
+                self.assertEqual(store.load('test')['name'], 'first')
+
+    def test_library_reports_corruption_and_restore_checks_revision(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            _, revision = store.load_versioned('test')
+            changed = sample(); changed['name'] = 'changed'
+            store.update_guarded(changed, revision)
+            (Path(root) / 'test.json').write_bytes(b'{broken')
+            with patch.object(routes, 'current_store', return_value=store):
+                listing = json.loads(asyncio.run(routes.list_templates(Request())).text)
+                self.assertEqual(listing['templates'], [])
+                self.assertEqual(listing['problems'], ['test'])
+                backups = json.loads(asyncio.run(routes.get_backups(Request())).text)
+                self.assertEqual(backups['backups'][0]['name'], sample()['name'])
+                self.assertTrue(backups['backups'][0]['created'])
+                body = {'backup_id': backups['backups'][0]['id'], 'revision': revision}
+                self.assertEqual(asyncio.run(routes.restore_backup(Request(body))).status, 409)
+                body['revision'] = backups['revision']
+                self.assertEqual(asyncio.run(routes.restore_backup(Request(body))).status, 200)
+                self.assertEqual(store.load('test')['name'], sample()['name'])
+
+    def test_snapshot_preview_matches_node_without_library_template(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root)
+            state = {'version': 2, 'template_id': 'test', 'preset_id': None,
+                     'blocks': {'a': True, 'b': False, 'n': True}, 'template': sample()}
+            with patch('tag_api_test.nodes.current_store', return_value=store), patch.object(routes, 'current_store', return_value=store):
+                bundle = TagTemplateNode().execute(json.dumps(state))[0]
+                expected = TagSingleMainNode().execute('positive', 'extra', False, bundle_1=bundle)[0]
+                response = asyncio.run(routes.preview_single(Request({'states': [state], 'channel': 'positive', 'text': 'extra', 'deduplicate': False})))
+                self.assertEqual(json.loads(response.text)['text'], expected)
+                self.assertEqual(expected, 'cat, dog, extra')
 
     def test_editor_rejects_multi_user(self):
         with patch.object(routes, 'current_store', side_effect=routes.UnsupportedModeError('unsupported')):
-            for handler in (routes.create_template, routes.update_template, routes.delete_template):
+            for handler in (routes.create_template, routes.update_template, routes.delete_template, routes.import_template):
                 self.assertEqual(asyncio.run(handler(Request(sample()))).status, 403)
 
 

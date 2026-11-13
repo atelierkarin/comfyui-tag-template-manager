@@ -22,7 +22,7 @@ export function toggleBlock(template, previous, id, enabled) {
 }
 
 export function stateError(template, state) {
-    if (!state || state.version !== 1 || state.template_id !== template.id ||
+    if (!state || ![1, 2].includes(state.version) || state.template_id !== template.id ||
         !state.blocks || typeof state.blocks !== 'object' || Array.isArray(state.blocks)) return 'Invalid saved selection.';
     const expected = template.blocks.map(block => block.id).sort();
     const actual = Object.keys(state.blocks).sort();
@@ -42,7 +42,7 @@ export function stateError(template, state) {
 // Preserve existing choices; add new blocks using defaults unless they would
 // conflict with an already selected block in the same channel and group.
 export function reconcileSelection(template, state) {
-    if (!state || state.version !== 1 || state.template_id !== template.id ||
+    if (!state || ![1, 2].includes(state.version) || state.template_id !== template.id ||
         !state.blocks || typeof state.blocks !== 'object' || Array.isArray(state.blocks) ||
         Object.values(state.blocks).some(value => typeof value !== 'boolean')) return null;
     const blocks = {};

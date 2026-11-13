@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from .prompt_builder import build_prompts
-from .schema import ValidationError, validate_id
+from .schema import ValidationError, validate_id, validate_template
 from .template_store import TemplateStore
 
 
@@ -31,10 +31,13 @@ def decode_state(text):
         state = json.loads(text, object_pairs_hook=unique)
     except (ValueError, TypeError) as exc:
         raise ValidationError('State is not valid JSON; select a template.') from exc
-    if not isinstance(state, dict) or set(state) != {'version', 'template_id', 'preset_id', 'blocks'}:
-        raise ValidationError('State is invalid; select a template or restore its state.')
-    if type(state['version']) is not int or state['version'] != 1:
+    if not isinstance(state, dict) or type(state.get('version')) is not int or state['version'] not in (1, 2):
         raise ValidationError('Unsupported state version; restore a compatible workflow.')
+    fields = {'version', 'template_id', 'preset_id', 'blocks'}
+    if state['version'] == 2:
+        fields.add('template')
+    if set(state) != fields:
+        raise ValidationError('State is invalid; select a template or restore its state.')
     validate_id(state['template_id'], 'template_id')
     if state['preset_id'] is not None:
         validate_id(state['preset_id'], 'preset_id')
@@ -45,7 +48,12 @@ def decode_state(text):
 
 def make_bundle(store, state):
     state = decode_state(json.dumps(state))
-    template = store.load(state['template_id'])
+    if state['version'] == 2:
+        template = validate_template(state['template'])
+        if template['id'] != state['template_id']:
+            raise ValidationError('Snapshot template ID does not match state.')
+    else:
+        template = store.load(state['template_id'])
     expected = {b['id'] for b in template['blocks']}
     actual = set(state['blocks'])
     if expected != actual:
