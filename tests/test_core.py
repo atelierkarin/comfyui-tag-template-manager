@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.schema import ValidationError, validate_template, parse_template
 from services.template_store import TemplateStore, StoreError, AlreadyExistsError, NotFoundError
-from services.prompt_builder import default_selection, apply_preset, set_block, build_prompts
+from services.prompt_builder import default_selection, apply_preset, set_block, build_prompts, format_tags
 
 
 @contextmanager
@@ -154,6 +154,16 @@ class StoreTests(unittest.TestCase):
 
 
 class BuilderTests(unittest.TestCase):
+    def test_format_tags_preserves_prompt_syntax(self):
+        self.assertEqual(format_tags('  cat,\n red   dress ,, (long,  hair:1.2), a\\,b  '),
+                         'cat, red dress, (long,  hair:1.2), a\\,b')
+        self.assertEqual(format_tags(' cat, (broken,  tag '), ' cat, (broken,  tag ')
+        self.assertEqual(format_tags('猫\n  dog,   BREAK'), '猫 dog, BREAK')
+        self.assertEqual(format_tags('x, trailing\\'), 'x, trailing\\')
+        self.assertEqual(format_tags('one, tag\\  , next'), 'one, tag\\  , next')
+        self.assertEqual(format_tags('cat,\u00a0cat'), 'cat,\u00a0cat')
+        self.assertEqual(format_tags('cat,\u00a0dog'), 'cat,\u00a0dog')
+        self.assertEqual(format_tags('cat  dog, a\\ '), 'cat  dog, a\\ ')
     def test_channel_specific_exclusive_groups(self):
         data = sample()
         data['blocks'][1]['channel'] = 'negative'

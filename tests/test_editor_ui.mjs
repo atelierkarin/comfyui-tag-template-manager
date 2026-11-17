@@ -8,12 +8,17 @@ class Element {
     append(...items) { this.children.push(...items); }
     add(item) { this.children.push(item); }
     replaceChildren(...items) { this.children = items; }
-    setAttribute() {}
+    setAttribute(name, value) { (this.attributes ||= {})[name] = value; }
     addEventListener(name, callback) { this[`event_${name}`] = callback; }
     showModal() { this.open = true; }
     close() { this.open = false; }
     remove() { this.removed = true; }
     click() { this.clicked = true; }
+    focus() { document.activeElement = this; }
+    querySelector(selector) {
+        if (selector === '[aria-label="Block"]') return all(this).find(item => item.attributes?.['aria-label'] === 'Block');
+        return null;
+    }
 }
 globalThis.document = { body: new Element('body'), createElement: tag => new Element(tag), createTextNode: text => text };
 globalThis.Option = class extends Element { constructor(text, value) { super('option', text); this.value = value; } };
@@ -22,6 +27,7 @@ let promptResult = 'copy_id';
 let promptQueue = [];
 let problems = [];
 let downloaded = null;
+let importFormattingRequested = false;
 globalThis.URL.createObjectURL = blob => { downloaded = blob; return 'blob:test'; };
 globalThis.URL.revokeObjectURL = () => {};
 globalThis.window = { addEventListener() {}, removeEventListener() {}, confirm: () => confirmResult, prompt: () => promptQueue.length ? promptQueue.shift() : promptResult };
@@ -30,6 +36,10 @@ const source = (await readFile('web/editor.js', 'utf8')).replace("'./editor-stat
 const { openEditor } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 let store = new Map(), changes = 0;
 async function request(path, options = {}) {
+    if (path === '/format-tags') {
+        const { tags } = JSON.parse(options.body);
+        return { tags: tags.map(text => text.split(',').map(part => part.trim().replace(/\s+/g, ' ')).filter(Boolean).join(', ')) };
+    }
     if (path === '/templates' && !options.method) return { templates: [...store.values()].map(({ id, name, category }) => ({ id, name, category })), problems };
     if (path.startsWith('/backups/')) {
         const id = decodeURIComponent(path.split('/').pop());
@@ -40,6 +50,10 @@ async function request(path, options = {}) {
     }
     if (path === '/import' && options.method === 'POST') {
         const value = JSON.parse(new TextDecoder().decode(options.body));
+        importFormattingRequested = options.headers['X-Format-Tags'] === '1';
+        if (options.headers['X-Format-Tags'] === '1') {
+            for (const block of value.blocks) block.tags = block.tags.split(',').map(part => part.trim()).filter(Boolean).join(', ');
+        }
         if (options.headers['X-Template-ID']) value.id = options.headers['X-Template-ID'];
         if (store.has(value.id)) { const error = new Error('collision'); error.status = 409; throw error; }
         store.set(value.id, value); return value;
@@ -79,34 +93,72 @@ const nameRow = all(document.body).find(x => x.children?.includes(nameLabel));
 const nameInput = nameRow.children.find(x => x.tagName === 'input');
 nameInput.value = 'Character'; nameInput.oninput();
 click('Add block');
-const blockDetails = find('details');
-assert.ok(blockDetails, 'blocks can be collapsed');
-assert.ok(blockDetails.open, 'new block starts expanded');
-blockDetails.open = false; blockDetails.event_toggle();
+const blockSelector = () => all(document.body).find(x => x.tagName === 'select' && x.attributes?.['aria-label'] === 'Block');
+assert.ok(blockSelector(), 'block selector is available');
+const firstBlock = blockSelector().value;
+const blockName = () => {
+    const labels = all(document.body).filter(x => x.tagName === 'span' && x.textContent === 'Name: ');
+    return all(document.body).find(x => x.children?.includes(labels[1])).children.find(x => x.tagName === 'input');
+};
+blockName().value = 'First'; blockName().oninput();
+const tagsInput = () => {
+    const label = find('span', 'Tags: ');
+    return all(document.body).find(x => x.children?.includes(label)).children.find(x => x.tagName === 'textarea');
+};
+tagsInput().value = ' cat,\n  dog  '; tagsInput().oninput();
+click('Format tags'); await tick();
+assert.equal(tagsInput().value, 'cat, dog', 'format updates the selected block draft');
+click('Add block');
+const secondBlock = blockSelector().value;
+assert.notEqual(firstBlock, secondBlock);
+blockName().value = 'Second'; blockName().oninput();
+blockSelector().value = firstBlock; blockSelector().onchange();
+assert.equal(blockName().value, 'First', 'switching blocks preserves the draft');
+assert.equal(document.activeElement, blockSelector(), 'switching blocks retains keyboard focus');
+click('↓');
+assert.equal(blockSelector().value, firstBlock, 'moving keeps selection');
+assert.deepEqual(blockSelector().children.map(x => x.value), [secondBlock, firstBlock]);
+click('Duplicate');
+assert.notEqual(blockSelector().value, firstBlock, 'duplicate is selected');
+assert.equal(blockName().value, 'First (copy)');
+click('Delete block');
+assert.equal(blockSelector().value, firstBlock, 'deleting last block selects previous');
 click('Add preset');
-assert.equal(find('details').open, false, 'collapse state survives editor re-render');
+assert.equal(blockSelector().value, firstBlock, 'selection survives editor re-render');
 confirmResult = false; click('Close');
 assert.equal(find('dialog').open, true);
 confirmResult = true;
 click('Save'); await tick();
 assert.equal(store.size, 1);
-assert.equal([...store.values()][0].blocks.length, 1);
+assert.equal([...store.values()][0].blocks.length, 2);
 assert.equal([...store.values()][0].presets.length, 1);
+assert.equal(blockSelector().value, firstBlock, 'first save retains selected block');
+assert.deepEqual([...store.values()][0].blocks.map(block => block.name), ['Second', 'First']);
+const presetCheckbox = all(document.body).filter(x => x.tagName === 'input' && x.type === 'checkbox')[1];
+presetCheckbox.checked = true; presetCheckbox.onchange();
+confirmResult = false; click('Close');
+assert.equal(find('dialog').open, true, 'preset changes mark the draft dirty');
+confirmResult = true; click('Save'); await tick();
 const saved = [...store.values()][0];
 saved.description = 'x'.repeat(1024 * 1024);
 click('Export saved'); await tick();
 assert.equal(downloaded, null, 'oversized export is rejected before download');
 saved.description = '';
 const changedOutside = [...store.values()][0]; changedOutside.description = 'external';
-nameInput.value = 'My draft'; nameInput.oninput();
+const currentNameInput = all(document.body).find(x => x.tagName === 'input' && x.value === 'Character');
+currentNameInput.value = 'My draft'; currentNameInput.oninput();
 click('Save'); await tick();
 assert.equal(changedOutside.description, 'external');
-assert.equal(nameInput.value, 'My draft', 'conflict preserves the draft');
+assert.equal(currentNameInput.value, 'My draft', 'conflict preserves the draft');
+assert.equal(blockSelector().value, firstBlock, 'conflict preserves block selection');
 click('Reload saved'); await tick();
 assert.ok(all(document.body).some(x => x.tagName === 'textarea' && x.value === 'external'), 'reload fetches the current saved version');
 changedOutside.description = '';
+changedOutside.blocks[0].tags = '  cat,\n  dog  ';
 click('Export saved'); await tick();
 assert.equal(JSON.parse(await downloaded.text()).name, 'Character');
+assert.equal(JSON.parse(await downloaded.text()).blocks[0].tags, 'cat, dog', 'export formats saved tags');
+assert.equal(changedOutside.blocks[0].tags, '  cat,\n  dog  ', 'export does not change the library');
 click('Import');
 const fileInput = all(document.body).find(x => x.tagName === 'input' && x.type === 'file');
 const activeName = all(document.body).find(x => x.tagName === 'input' && x.value === 'Character');
@@ -120,13 +172,14 @@ promptResult = 'copy_id';
 fileInput.files = [{ size: downloaded.size, arrayBuffer: () => downloaded.arrayBuffer() }];
 fileInput.onchange(); await tick(); await tick();
 assert.equal(store.has('copy_id'), true, 'collision imports under a new ID');
+assert.equal(importFormattingRequested, true, 'editor requests formatting during import');
 click('Delete'); await tick();
 const list = find('select'); list.value = [...store.keys()][0]; list.onchange(); await tick();
 click('Save As / Duplicate'); await tick();
 assert.equal(store.size, 2);
 click('Delete'); await tick();
 assert.equal(store.size, 1);
-assert.equal(changes, 5);
+assert.equal(changes, 6);
 click('Close');
 assert.equal(find('dialog').removed, true);
 document.body = new Element('body');
@@ -135,5 +188,5 @@ openEditor({ request, selectedId: restoreId, onChanged: () => changes++ }); awai
 promptQueue = [restoreId, '1'];
 click('Restore backup'); await tick(); await tick();
 assert.equal(store.get(restoreId).name, 'Restored', 'selected backup is restored');
-assert.equal(changes, 6);
+assert.equal(changes, 7);
 console.log('Editor interaction flow: OK');

@@ -39,7 +39,9 @@ Select **Update preview** on `Tag Main` to inspect the combined text. Update it 
 
 Each block has a positive or negative channel, a default on/off state, and an optional exclusive group. Only one block in the same group and channel can be enabled at a time. Positive and negative channels are considered separately.
 
-When you first select a template, the blocks' default states are used. Presets are optional. In the editor, select a block heading to expand or collapse it.
+When you first select a template, the blocks' default states are used. Presets are optional. In the editor, choose a block under **Block** to edit, reorder, duplicate, or delete it. Switching blocks keeps edits in the draft; select **Save** to save the whole template.
+
+**Format tags** tidies the selected block's top-level comma spacing and excess whitespace in plain tags. It handles bracketed and escaped expressions conservatively and leaves malformed syntax unchanged. Select **Save** to save the formatted draft.
 
 ### Temporarily excluding tags
 
@@ -51,7 +53,7 @@ For example, `ribbon` removes a `ribbon` tag regardless of case. Only whole tags
 
 Templates are stored as individual JSON files under `default/tag_templates/` in the ComfyUI user directory. With the default configuration, this is `ComfyUI/user/default/tag_templates/`. Copy that directory to back up the entire library.
 
-Use **Export saved** in the editor to download a saved template as JSON, and **Import** to load a UTF-8 JSON file up to 1 MiB. Copy the library folder to move templates larger than 1 MiB. Unsaved edits are not exported. If the ID already exists, choose a different ID or cancel; existing templates are not overwritten and workflows keep referencing their original IDs.
+Use **Export saved** in the editor to download a saved template as JSON, and **Import** to load a UTF-8 JSON file up to 1 MiB. Tag formatting is applied to each imported block and to the exported copy. Export does not alter the saved template or include unsaved edits. Any remaining newlines inside JSON strings are represented as `\n` according to the JSON format. Copy the library folder to move templates larger than 1 MiB. If the ID already exists, choose a different ID or cancel; existing templates are not overwritten and workflows keep referencing their original IDs.
 
 Before saving or deleting a template, the editor keeps its previous contents in `tag_templates/.backups/`. Use **Restore backup** to select a template ID and a backup by time and name. Backups are not automatically deleted; include them in your library backups and manage disk usage as needed. On an edit conflict, the draft remains available: use **Save As / Duplicate** to save it under a new ID or **Reload saved** to discard it and load the current version. Concurrent edits by external tools cannot be prevented completely.
 

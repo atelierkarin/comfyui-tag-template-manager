@@ -32,7 +32,7 @@ export function openEditor({ request, selectedId, onChanged }) {
     fieldset.append(heading, status, libraryWarning, controls, buttons, body);
     dialog.append(fieldset); document.body.append(dialog);
     let templates = [], draft = null, savedId = null, revision = null, dirty = false, busy = false;
-    const expandedBlocks = new Set();
+    let selectedBlockId = null;
     const beforeUnload = event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', beforeUnload);
 
@@ -70,14 +70,15 @@ export function openEditor({ request, selectedId, onChanged }) {
         libraryWarning.textContent = result.problems?.length ? `Cannot read template files: ${result.problems.join(', ')}. Check the server log or restore a backup.` : '';
         refreshOptions();
     }
-    function changeDraft(value, id = null, isDirty = false, nextRevision = null) {
-        if (savedId !== id) expandedBlocks.clear();
+    function changeDraft(value, id = null, isDirty = false, nextRevision = null, resetSelection = false) {
+        if (resetSelection || savedId !== id) selectedBlockId = null;
         draft = value; savedId = id; revision = nextRevision; dirty = isDirty; render(); refreshOptions();
         report(isDirty ? 'Unsaved changes' : id ? `Editing ${id}` : 'Select or create a template.');
     }
-    async function load(id) {
+    async function load(id, resetSelection = true) {
         const data = await request(`/editor/${encodeURIComponent(id)}`);
-        changeDraft(data.template, id, false, data.revision);
+        if (!resetSelection) savedId = id;
+        changeDraft(data.template, id, false, data.revision, resetSelection);
     }
     search.oninput = refreshOptions;
     list.onchange = () => {
@@ -87,7 +88,7 @@ export function openEditor({ request, selectedId, onChanged }) {
         run(() => load(id));
     };
     button('New', () => {
-        if (confirmDiscard()) changeDraft(newTemplate(generateId('template')), null, true);
+        if (confirmDiscard()) changeDraft(newTemplate(generateId('template')), null, true, null, true);
     });
     button('Save', () => run(async () => {
         if (!draft) throw new Error('Create or select a template first.');
@@ -100,7 +101,7 @@ export function openEditor({ request, selectedId, onChanged }) {
             const data = await request('/templates', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
             });
-            await load(data.id);
+            await load(data.id, false);
         }
         onChanged?.(); await refreshList(); report('Saved.');
     }));
@@ -133,7 +134,7 @@ export function openEditor({ request, selectedId, onChanged }) {
         if (file.size > 1024 * 1024) throw new Error('Import file exceeds 1 MiB.');
         const bytes = await file.arrayBuffer();
         const send = id => request('/import', { method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream', ...(id ? { 'X-Template-ID': id } : {}) }, body: bytes });
+            headers: { 'Content-Type': 'application/octet-stream', 'X-Format-Tags': '1', ...(id ? { 'X-Template-ID': id } : {}) }, body: bytes });
         let data;
         try { data = await send(); }
         catch (error) {
@@ -149,6 +150,9 @@ export function openEditor({ request, selectedId, onChanged }) {
     button('Export saved', () => run(async () => {
         if (!savedId) throw new Error('Select a saved template first.');
         const data = await request(`/templates/${encodeURIComponent(savedId)}`);
+        const formatted = await request('/format-tags', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tags: data.blocks.map(block => block.tags) }) });
+        data.blocks.forEach((block, index) => { block.tags = formatted.tags[index]; });
         const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
         if (blob.size > 1024 * 1024) throw new Error('Saved template exceeds 1 MiB; copy the library folder instead.');
         const url = URL.createObjectURL(blob);
@@ -200,11 +204,13 @@ export function openEditor({ request, selectedId, onChanged }) {
         const row = el('label'); row.style.display = 'block';
         const input = el('input'); input.type = 'checkbox'; input.checked = value;
         input.onchange = () => { change(input.checked); markDirty(); };
-        row.append(input, document.createTextNode(` ${label}`)); parent.append(row);
+        const caption = el('span', ` ${label}`);
+        row.append(input, caption); parent.append(row); return caption;
     }
     function render() {
         form.replaceChildren();
         if (!draft) return;
+        const presetBlockLabels = [];
         textField(form, 'ID', draft.id, value => { draft.id = value; }, { disabled: !!savedId });
         textField(form, 'Name', draft.name, value => { draft.name = value; });
         textField(form, 'Category', draft.category, value => { draft.category = value; });
@@ -213,36 +219,59 @@ export function openEditor({ request, selectedId, onChanged }) {
         button('Add block', () => {
             const id = generateId('block');
             draft.blocks.push({ id, name: 'New block', channel: 'positive', default_enabled: false, exclusive_group: null, tags: '' });
-            expandedBlocks.add(id);
+            selectedBlockId = id;
             markDirty(); render();
         }, form);
-        for (const block of draft.blocks) {
-            const section = el('details'); section.style.margin = '10px 0';
-            section.open = expandedBlocks.has(block.id);
-            section.addEventListener('toggle', () => {
-                if (section.open) expandedBlocks.add(block.id); else expandedBlocks.delete(block.id);
+        if (!draft.blocks.some(block => block.id === selectedBlockId)) selectedBlockId = draft.blocks[0]?.id || null;
+        const selectorLabel = el('label');
+        selectorLabel.append(document.createTextNode(' Block: '));
+        const selector = el('select'); selector.setAttribute('aria-label', 'Block');
+        for (const item of draft.blocks) selector.add(new Option(`${item.name} (${item.id})`, item.id));
+        selector.value = selectedBlockId || ''; selector.disabled = !selectedBlockId;
+        selector.onchange = () => {
+            selectedBlockId = selector.value; render();
+            form.querySelector('[aria-label="Block"]')?.focus();
+        };
+        selectorLabel.append(selector); form.append(selectorLabel);
+        const block = draft.blocks.find(item => item.id === selectedBlockId);
+        if (block) {
+            const section = el('div'); section.style.margin = '10px 0';
+            textField(section, 'Name', block.name, value => {
+                block.name = value;
+                const option = Array.from(selector.children).find(item => item.value === block.id);
+                if (option) option.textContent = `${value} (${block.id})`;
+                for (const label of presetBlockLabels) label.textContent = ` ${value} (${block.id})`;
             });
-            const summary = el('summary', `${block.name} (${block.id})`);
-            section.append(summary);
-            textField(section, 'Name', block.name, value => { block.name = value; summary.textContent = `${value} (${block.id})`; });
             const channel = el('select');
             channel.add(new Option('Positive', 'positive')); channel.add(new Option('Negative', 'negative')); channel.value = block.channel;
             channel.onchange = () => { block.channel = channel.value; markDirty(); };
             section.append(el('span', 'Channel: '), channel);
             textField(section, 'Exclusive group', block.exclusive_group || '', value => { block.exclusive_group = value.trim() || null; });
             checkbox(section, 'Enabled by default', block.default_enabled, value => { block.default_enabled = value; });
-            textField(section, 'Tags', block.tags, value => { block.tags = value; }, { multiline: true });
+            const tagsInput = textField(section, 'Tags', block.tags, value => { block.tags = value; }, { multiline: true });
+            button('Format tags', () => run(async () => {
+                const result = await request('/format-tags', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tags: [block.tags] }) });
+                if (result.tags[0] !== block.tags) {
+                    block.tags = result.tags[0]; tagsInput.value = block.tags; markDirty();
+                } else report('Tags are already formatted.');
+            }), section);
             const actions = el('div'); section.append(actions);
-            button('↑', () => { draft = moveBlock(draft, block.id, -1); markDirty(); render(); }, actions);
-            button('↓', () => { draft = moveBlock(draft, block.id, 1); markDirty(); render(); }, actions);
-            button('Duplicate', () => { const id = generateId('block'); draft = duplicateBlock(draft, block.id, id); expandedBlocks.add(id); markDirty(); render(); }, actions);
+            const index = draft.blocks.findIndex(item => item.id === block.id);
+            const up = button('↑', () => { draft = moveBlock(draft, block.id, -1); markDirty(); render(); }, actions);
+            const down = button('↓', () => { draft = moveBlock(draft, block.id, 1); markDirty(); render(); }, actions);
+            up.setAttribute('aria-label', 'Move block up'); down.setAttribute('aria-label', 'Move block down');
+            up.disabled = index === 0; down.disabled = index === draft.blocks.length - 1;
+            button('Duplicate', () => { const id = generateId('block'); draft = duplicateBlock(draft, block.id, id); selectedBlockId = id; markDirty(); render(); }, actions);
             button('Delete block', () => {
                 if (window.confirm(`Delete block ${block.name} and remove it from presets?`)) {
-                    draft = removeBlock(draft, block.id); markDirty(); render();
+                    draft = removeBlock(draft, block.id);
+                    selectedBlockId = draft.blocks[Math.min(index, draft.blocks.length - 1)]?.id || null;
+                    markDirty(); render();
                 }
             }, actions);
             form.append(section);
-        }
+        } else form.append(el('p', 'No blocks. Add a block to start.'));
         form.append(el('h3', 'Presets'));
         button('Add preset', () => {
             draft.presets.push({ id: generateId('preset'), name: 'New preset', enabled_block_ids: [] });
@@ -253,9 +282,10 @@ export function openEditor({ request, selectedId, onChanged }) {
             section.append(el('legend', `${preset.name} (${preset.id})`));
             textField(section, 'Name', preset.name, value => { preset.name = value; });
             for (const block of draft.blocks) {
-                checkbox(section, `${block.name} (${block.id})`, preset.enabled_block_ids.includes(block.id), value => {
-                    draft = togglePresetBlock(draft, preset.id, block.id, value); render();
+                const caption = checkbox(section, `${block.name} (${block.id})`, preset.enabled_block_ids.includes(block.id), value => {
+                    draft = togglePresetBlock(draft, preset.id, block.id, value); markDirty(); render();
                 });
+                if (block.id === selectedBlockId) presetBlockLabels.push(caption);
             }
             button('Delete preset', () => {
                 if (window.confirm(`Delete preset ${preset.name}?`)) {

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - Unreleased
+
+### Added
+
+- Format tags in the selected block, and format block tags during editor import and export.
+
+### Changed
+
+- Select one block at a time in the editor to edit and organize templates with many blocks.
+
+### Fixed
+
+- Mark preset selection changes as unsaved so they are protected by discard confirmation.
+
+### Known limitations
+
+- Only ComfyUI's single-user mode is supported.
+- Backups are not automatically removed, and external file edits cannot be protected against all concurrent changes.
+- Editor import/export is limited to 1 MiB per file; copy the library directory to move larger templates.
+- Snapshot workflows contain template contents and cannot be used by older versions of the plugin.
+- Exclusion and deduplication are limited to safely handled plain tags; complex prompt expressions are not interpreted.
+
 ## [0.2.0] - 2026-11-13
 
 ### Added
@@ -46,5 +68,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Concurrent edits to the same template are not detected.
 - Exclusion and deduplication are limited to safely handled plain tags; complex prompt expressions are not interpreted.
 
+[0.3.0]: https://github.com/atelierkarin/comfyui-tag-template-manager/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/atelierkarin/comfyui-tag-template-manager/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/atelierkarin/comfyui-tag-template-manager/releases/tag/v0.1.0

@@ -70,6 +70,37 @@ def _plain_tag(text):
     return bool(re.fullmatch(r'[\w\s-]+', text, flags=re.UNICODE)) and text != 'BREAK'
 
 
+def format_tags(text):
+    """Tidy safe tag separators while preserving complex or malformed syntax."""
+    if not isinstance(text, str):
+        raise ValidationError('tags: expected string')
+    items = _split_fragment(text)
+    if items is None:
+        return text
+    result = []
+    for item in items:
+        stripped = item.strip()
+        if not stripped:
+            continue
+        if _plain_tag(stripped):
+            result.append(' '.join(stripped.split()))
+        elif '\\' in item:
+            # Retain trailing whitespace if its first character is escaped.
+            right = item.rstrip()
+            slashes = len(right) - len(right.rstrip('\\'))
+            result.append((item if slashes % 2 else right).lstrip())
+        else:
+            result.append(stripped)
+    formatted = ', '.join(result)
+    original = text.strip(' \t\r\n,')
+    safe = lambda value: bool(re.fullmatch(r'[A-Za-z0-9_ ,\t\r\n-]+', value)) and not re.search(r'\bBREAK\b', value)
+    if (safe(formatted) and not safe(original)) or any(
+            _join([text], deduplicate) != _join([formatted], deduplicate)
+            for deduplicate in (False, True)):
+        return text
+    return formatted
+
+
 def _join(fragments, deduplicate, exclude=''):
     parts, seen = [], set()
     excluded = set()
