@@ -6,6 +6,7 @@ from aiohttp import web
 
 from ..nodes import current_store as node_store
 from ..services.node_service import UnsupportedModeError, compose_single, decode_state, make_bundle
+from ..services.prompt_builder import format_tags
 from ..services.schema import ValidationError, parse_template, validate_id
 from ..services.template_store import AlreadyExistsError, ConflictError, NotFoundError, StoreError
 
@@ -81,11 +82,23 @@ async def import_template(request):
         data = parse_template(content.decode('utf-8'))
     except UnicodeDecodeError as exc:
         raise ValidationError('Import file must be UTF-8.') from exc
+    if request.headers.get('X-Format-Tags') == '1':
+        for block in data['blocks']:
+            block['tags'] = format_tags(block['tags'])
     replacement = request.headers.get('X-Template-ID')
     if replacement is not None:
         data['id'] = validate_id(replacement, '$.id')
     store.create(data)
     return web.json_response(data, status=201)
+
+
+@errors
+async def format_tag_list(request):
+    current_store(request)
+    body = await request.json()
+    if not isinstance(body, dict) or set(body) != {'tags'} or not isinstance(body['tags'], list):
+        raise ValidationError('Expected a list of tag strings.')
+    return web.json_response({'tags': [format_tags(text) for text in body['tags']]})
 
 
 @errors
@@ -166,6 +179,7 @@ def register_routes(routes):
     routes.get('/tag-template-manager/templates/{template_id}')(get_template)
     routes.post('/tag-template-manager/templates')(create_template)
     routes.post('/tag-template-manager/import')(import_template)
+    routes.post('/tag-template-manager/format-tags')(format_tag_list)
     routes.get('/tag-template-manager/editor/{template_id}')(get_editable)
     routes.put('/tag-template-manager/editor/{template_id}')(save_editable)
     routes.delete('/tag-template-manager/editor/{template_id}')(delete_editable)

@@ -26,6 +26,13 @@ class Request:
 
 
 class ApiTests(unittest.TestCase):
+    def test_format_tags_endpoint(self):
+        with patch.object(routes, 'current_store', return_value=object()):
+            response = asyncio.run(routes.format_tag_list(Request({'tags': ['  cat,\n dog ', '(bad,  tag']})))
+            self.assertEqual(response.status, 200)
+            self.assertEqual(json.loads(response.text)['tags'], ['cat, dog', '(bad,  tag'])
+            self.assertEqual(asyncio.run(routes.format_tag_list(Request({'tags': [1]}))).status, 400)
+
     def test_template_outputs_selected_blocks_as_strings(self):
         with temporary_directory() as root:
             store = TemplateStore(root); store.create(sample())
@@ -134,9 +141,10 @@ class ApiTests(unittest.TestCase):
 
     def test_import_rejects_bad_data_and_preserves_existing(self):
         class RawRequest:
-            def __init__(self, raw, replacement=None):
+            def __init__(self, raw, replacement=None, format_tags=False):
                 self.raw = raw
                 self.headers = {'X-Template-ID': replacement} if replacement else {}
+                if format_tags: self.headers['X-Format-Tags'] = '1'
                 self.content = self
             async def read(self, size):
                 chunk, self.raw = self.raw[:size], self.raw[size:]
@@ -152,6 +160,9 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(result.status, 201)
                 self.assertEqual(store.load('copy')['blocks'], sample()['blocks'])
                 self.assertEqual(store.load('test'), sample())
+                response = asyncio.run(routes.import_template(RawRequest(raw, 'formatted', True)))
+                self.assertEqual(response.status, 201)
+                self.assertEqual(store.load('formatted')['blocks'][0]['tags'], 'cat, dog')
 
     def test_editor_version_conflict_preserves_newer_change(self):
         with temporary_directory() as root:
