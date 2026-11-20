@@ -49,3 +49,40 @@ class TagSingleMainNode:
         current_store()
         bundles = [kwargs[f'bundle_{i}'] for i in range(1, 9) if f'bundle_{i}' in kwargs]
         return (compose_single(bundles, channel, text, deduplicate, exclude),)
+
+
+class TagTemplateBundlerNode:
+    CATEGORY = 'Tag Template Manager'
+    RETURN_TYPES = ('TAG_BUNDLE_LIST',)
+    RETURN_NAMES = ('bundles',)
+    FUNCTION = 'execute'
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {'optional': {f'bundle_{i}': ('TAG_BUNDLE',) for i in range(1, 9)}}
+
+    def execute(self, **kwargs):
+        current_store()
+        return ([kwargs[f'bundle_{i}'] for i in range(1, 9) if f'bundle_{i}' in kwargs],)
+
+
+class TagEncodedMainNode:
+    CATEGORY = 'Tag Template Manager'
+    RETURN_TYPES = ('STRING', 'CONDITIONING')
+    RETURN_NAMES = ('text', 'conditioning')
+    FUNCTION = 'execute'
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {'required': {
+            'clip': ('CLIP',),
+            'channel': (['positive', 'negative'],),
+            'text': ('STRING', {'default': '', 'multiline': True}),
+            'deduplicate': ('BOOLEAN', {'default': False}),
+        }, 'optional': {'bundles': ('TAG_BUNDLE_LIST',),
+                        'exclude': ('STRING', {'default': '', 'multiline': True})}}
+
+    def execute(self, clip, channel, text, deduplicate, bundles=None, exclude=''):
+        current_store()
+        result = compose_single(bundles if bundles is not None else [], channel, text, deduplicate, exclude)
+        return result, clip.encode_from_tokens_scheduled(clip.tokenize(result))

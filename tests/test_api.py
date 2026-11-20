@@ -26,6 +26,34 @@ class Request:
 
 
 class ApiTests(unittest.TestCase):
+    def test_bundler_and_encoded_main(self):
+        from tag_api_test import nodes
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            state = json.dumps({'version': 1, 'template_id': 'test', 'preset_id': None,
+                                'blocks': {'a': True, 'b': False, 'n': True}})
+            class Clip:
+                def tokenize(self, text): return ('tokens', text)
+                def encode_from_tokens_scheduled(self, tokens): return [('conditioning', tokens)]
+            with patch.object(nodes, 'current_store', return_value=store):
+                bundle = TagTemplateNode().execute(state)[0]
+                bundler = nodes.TagTemplateBundlerNode()
+                bundles = bundler.execute(bundle_3=bundle, bundle_1=bundle)[0]
+                self.assertEqual(bundles, [bundle, bundle])
+                self.assertEqual(bundler.execute(), ([],))
+                node = nodes.TagEncodedMainNode()
+                self.assertEqual(node.RETURN_TYPES, ('STRING', 'CONDITIONING'))
+                self.assertIn('clip', node.INPUT_TYPES()['required'])
+                text, conditioning = node.execute(Clip(), 'positive', 'extra', False, bundles=bundles)
+                self.assertEqual(text, 'cat, dog, cat, dog, extra')
+                self.assertEqual(conditioning, [('conditioning', ('tokens', text))])
+                self.assertEqual(node.execute(Clip(), 'negative', '', False), ('', [('conditioning', ('tokens', ''))]))
+                self.assertEqual(node.execute(Clip(), 'negative', 'bad', True, bundles=bundles)[0], 'bad')
+                self.assertEqual(node.execute(Clip(), 'positive', 'extra', False, bundles=bundles, exclude='cat')[0], 'dog, dog, extra')
+            with patch.object(nodes, 'current_store', side_effect=routes.UnsupportedModeError('unsupported')):
+                with self.assertRaises(routes.UnsupportedModeError): bundler.execute()
+                with self.assertRaises(routes.UnsupportedModeError): node.execute(Clip(), 'positive', '', False)
+
     def test_format_tags_endpoint(self):
         with patch.object(routes, 'current_store', return_value=object()):
             response = asyncio.run(routes.format_tag_list(Request({'tags': ['  cat,\n dog ', '(bad,  tag']})))

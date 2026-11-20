@@ -11,6 +11,7 @@ A ComfyUI custom node for managing reusable tag templates locally. Organize char
 - Manage positive and negative tags separately, with channel-specific exclusive groups
 - Combine templates with free text, temporarily exclude tags, and preview the result
 - Output strings directly from `Tag Template` and save selections in workflows
+- Collect template inputs with a bundler and output conditioning using CLIP
 
 ## Installation
 
@@ -31,9 +32,10 @@ The node has been tested with ComfyUI 0.22.0 and requires Python 3.10 or later. 
 2. Select **New**, add a name and tag blocks, and select **Save**. You can also create presets.
 3. Select the template and check the blocks you want to use. You can change individual blocks after applying a preset. Each node's selection is saved in the workflow.
 4. To use a template directly, connect its `positive` or `negative` output to a STRING input, such as CLIP Text Encode.
-5. To combine multiple templates with free text, connect their `bundle` outputs to `Tag Main`. Choose `positive` or `negative` for `channel` and add any extra tags in `text`. Use a separate `Tag Main` for each channel when you need both.
+5. Connect each template's `bundle` output to `Tag Template Bundler`, then connect its `bundles` output to `Tag Main (Encode)`. The bundler combines up to eight inputs in numbered order.
+6. Connect the model's CLIP to `Tag Main (Encode)` and choose a `channel` and optional free `text`. The node outputs `text` and `conditioning`. For both positive and negative, connect the same bundler to two Main nodes. Free text also works without a bundler.
 
-Select **Update preview** on `Tag Main` to inspect the combined text. Update it again after changing inputs, connections, or templates. The preview supports connections from `Tag Template` and standard Reroute nodes; it cannot evaluate free-text or other widgets connected to external nodes.
+The original `Tag Main` remains available for existing workflows. **Update preview** displays the combined text without encoding it. Update it again after changing inputs, connections, or templates. Preview supports `Tag Template`, Bundler and standard Reroute nodes; it cannot evaluate free-text or other widgets connected to external nodes. Workflows containing the new nodes cannot be used with older plugin versions.
 
 ### Blocks and presets
 

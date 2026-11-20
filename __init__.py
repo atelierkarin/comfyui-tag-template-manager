@@ -1,15 +1,19 @@
 """ComfyUI custom-node entry point."""
 
 import sys
-from .nodes import TagSingleMainNode, TagTemplateNode
+from .nodes import TagEncodedMainNode, TagSingleMainNode, TagTemplateBundlerNode, TagTemplateNode
 
 NODE_CLASS_MAPPINGS = {
     'TagTemplateManagerTemplate': TagTemplateNode,
     'TagTemplateManagerSingleMain': TagSingleMainNode,
+    'TagTemplateManagerBundler': TagTemplateBundlerNode,
+    'TagTemplateManagerEncodedMain': TagEncodedMainNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     'TagTemplateManagerTemplate': 'Tag Template',
     'TagTemplateManagerSingleMain': 'Tag Main',
+    'TagTemplateManagerBundler': 'Tag Template Bundler',
+    'TagTemplateManagerEncodedMain': 'Tag Main (Encode)',
 }
 WEB_DIRECTORY = './web'
 
