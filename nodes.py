@@ -42,13 +42,12 @@ class TagSingleMainNode:
             'channel': (['positive', 'negative'],),
             'text': ('STRING', {'default': '', 'multiline': True}),
             'deduplicate': ('BOOLEAN', {'default': False}),
-        }, 'optional': {**{f'bundle_{i}': ('TAG_BUNDLE',) for i in range(1, 9)},
+        }, 'optional': {'bundles': ('TAG_BUNDLE_LIST',),
                         'exclude': ('STRING', {'default': '', 'multiline': True})}}
 
-    def execute(self, channel, text, deduplicate, exclude='', **kwargs):
+    def execute(self, channel, text, deduplicate, exclude='', bundles=None):
         current_store()
-        bundles = [kwargs[f'bundle_{i}'] for i in range(1, 9) if f'bundle_{i}' in kwargs]
-        return (compose_single(bundles, channel, text, deduplicate, exclude),)
+        return (compose_single(bundles if bundles is not None else [], channel, text, deduplicate, exclude),)
 
 
 class TagTemplateBundlerNode:

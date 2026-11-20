@@ -35,7 +35,9 @@ ComfyUI 0.22.0 で動作を確認しています。Python 3.10 以上が必要�
 5. 複数テンプレートを使う場合は、各 `bundle` 出力を `Tag Template Bundler` に接続し、その `bundles` 出力を `Tag Main (Encode)` に接続します。Bundler は最大８入力を番号順に結合します。
 6. モデルの CLIP を `Tag Main (Encode)` の `clip` に接続し、`channel` と自由入力の `text` を設定します。`text` と `conditioning` を出力します。Positive と Negative の両方が必要なら Main を２つ用意し、同じ Bundler を接続します。Bundler 未接続でも自由入力を使えます。
 
-従来の `Tag Main` は既存ワークフロー向けに利用できます。**Update preview** は結合テキストを表示し、CLIP のエンコードは行いません。入力や接続、テンプレートを変更した後は再度更新してください。プレビューは `Tag Template`、Bundler と通常の Reroute に対応しています。自由入力などのウィジェットを外部ノードに接続した場合は、プレビューでは評価できません。新ノードを含むワークフローは旧版のプラグインでは利用できません。
+テキストのみ必要な場合は、`Tag Main (Encode)` の代わりに `Tag Main` を使えます。こちらも Bundler の `bundles` 出力を接続します。v0.3.0 以前の `Tag Main` の８個の Bundle 入力は廃止されたため、既存ワークフローは Bundler を追加して接続し直し、プレビューと出力を確認してください。自動移行は行いません。
+
+**Update preview** は結合テキストを表示し、CLIP のエンコードは行いません。入力や接続、テンプレートを変更した後は再度更新してください。プレビューは `Tag Template`、Bundler と通常の Reroute に対応しています。自由入力などのウィジェットを外部ノードに接続した場合は、プレビューでは評価できません。新ノードを含むワークフローは旧版のプラグインでは利用できません。
 
 ### ブロックとプリセット
 

@@ -35,7 +35,9 @@ The node has been tested with ComfyUI 0.22.0 and requires Python 3.10 or later. 
 5. Connect each template's `bundle` output to `Tag Template Bundler`, then connect its `bundles` output to `Tag Main (Encode)`. The bundler combines up to eight inputs in numbered order.
 6. Connect the model's CLIP to `Tag Main (Encode)` and choose a `channel` and optional free `text`. The node outputs `text` and `conditioning`. For both positive and negative, connect the same bundler to two Main nodes. Free text also works without a bundler.
 
-The original `Tag Main` remains available for existing workflows. **Update preview** displays the combined text without encoding it. Update it again after changing inputs, connections, or templates. Preview supports `Tag Template`, Bundler and standard Reroute nodes; it cannot evaluate free-text or other widgets connected to external nodes. Workflows containing the new nodes cannot be used with older plugin versions.
+For text-only output, use `Tag Main` instead of `Tag Main (Encode)` and connect the Bundler's `bundles` output. The eight Bundle inputs on `Tag Main` from v0.3.0 and earlier have been removed. Add a Bundler to existing workflows, reconnect the templates through it, and check the preview and output; connections are not migrated automatically.
+
+**Update preview** displays the combined text without encoding it. Update it again after changing inputs, connections, or templates. Preview supports `Tag Template`, Bundler and standard Reroute nodes; it cannot evaluate free-text or other widgets connected to external nodes. Workflows containing the new nodes cannot be used with older plugin versions.
 
 ### Blocks and presets
 

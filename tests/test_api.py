@@ -26,6 +26,21 @@ class Request:
 
 
 class ApiTests(unittest.TestCase):
+    def test_single_main_accepts_bundle_list(self):
+        from tag_api_test import nodes
+        self.assertEqual(TagSingleMainNode.INPUT_TYPES()['optional']['bundles'], ('TAG_BUNDLE_LIST',))
+        self.assertNotIn('bundle_1', TagSingleMainNode.INPUT_TYPES()['optional'])
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            state = json.dumps({'version': 1, 'template_id': 'test', 'preset_id': None,
+                                'blocks': {'a': True, 'b': False, 'n': True}})
+            with patch.object(nodes, 'current_store', return_value=store):
+                bundle = TagTemplateNode().execute(state)[0]
+                bundles = nodes.TagTemplateBundlerNode().execute(bundle_1=bundle, bundle_3=bundle)[0]
+                self.assertEqual(TagSingleMainNode().execute('positive', 'extra', False, bundles=bundles),
+                                 ('cat, dog, cat, dog, extra',))
+                self.assertEqual(TagSingleMainNode().execute('positive', 'free', False), ('free',))
+
     def test_bundler_and_encoded_main(self):
         from tag_api_test import nodes
         with temporary_directory() as root:
@@ -86,9 +101,9 @@ class ApiTests(unittest.TestCase):
             with patch('tag_api_test.nodes.current_store', return_value=store):
                 bundle = TagTemplateNode().execute(state)[0]
                 node = TagSingleMainNode()
-                self.assertEqual(node.execute('positive', 'extra', False, bundle_1=bundle), ('cat, dog, extra',))
-                self.assertEqual(node.execute('negative', 'other', False, bundle_1=bundle), ('bad, other',))
-                self.assertEqual(node.execute('negative', 'bad', True, bundle_1=bundle), ('bad',))
+                self.assertEqual(node.execute('positive', 'extra', False, bundles=[bundle]), ('cat, dog, extra',))
+                self.assertEqual(node.execute('negative', 'other', False, bundles=[bundle]), ('bad, other',))
+                self.assertEqual(node.execute('negative', 'bad', True, bundles=[bundle]), ('bad',))
                 self.assertEqual(node.execute('positive', 'free', False), ('free',))
                 with self.assertRaises(ValueError): node.execute('invalid', '', False)
 
@@ -112,7 +127,7 @@ class ApiTests(unittest.TestCase):
                      'blocks': {'a': True, 'b': False, 'n': True}}
             with patch('tag_api_test.nodes.current_store', return_value=store), patch.object(routes, 'current_store', return_value=store):
                 bundle = TagTemplateNode().execute(json.dumps(state))[0]
-                self.assertEqual(TagSingleMainNode().execute('positive', 'extra, cat', False, exclude='cat', bundle_1=bundle), ('dog, extra',))
+                self.assertEqual(TagSingleMainNode().execute('positive', 'extra, cat', False, exclude='cat', bundles=[bundle]), ('dog, extra',))
                 body = {'states': [state], 'channel': 'positive', 'text': 'extra, cat', 'deduplicate': False, 'exclude': 'cat'}
                 response = asyncio.run(routes.preview_single(Request(body)))
                 self.assertEqual(json.loads(response.text)['text'], 'dog, extra')
@@ -123,7 +138,7 @@ class ApiTests(unittest.TestCase):
                                 'blocks': {'a': True, 'b': False, 'n': True}})
             with patch('tag_api_test.nodes.current_store', return_value=store):
                 bundle = TagTemplateNode().execute(state)[0]
-                result = TagSingleMainNode().execute('positive', 'extra', False, bundle_2=bundle)
+                result = TagSingleMainNode().execute('positive', 'extra', False, bundles=[bundle])
                 self.assertEqual(result, ('cat, dog, extra',))
             with patch('tag_api_test.nodes.current_store', side_effect=routes.UnsupportedModeError('unsupported')):
                 with self.assertRaises(routes.UnsupportedModeError):
@@ -232,7 +247,7 @@ class ApiTests(unittest.TestCase):
                      'blocks': {'a': True, 'b': False, 'n': True}, 'template': sample()}
             with patch('tag_api_test.nodes.current_store', return_value=store), patch.object(routes, 'current_store', return_value=store):
                 bundle = TagTemplateNode().execute(json.dumps(state))[0]
-                expected = TagSingleMainNode().execute('positive', 'extra', False, bundle_1=bundle)[0]
+                expected = TagSingleMainNode().execute('positive', 'extra', False, bundles=[bundle])[0]
                 response = asyncio.run(routes.preview_single(Request({'states': [state], 'channel': 'positive', 'text': 'extra', 'deduplicate': False})))
                 self.assertEqual(json.loads(response.text)['text'], expected)
                 self.assertEqual(expected, 'cat, dog, extra')

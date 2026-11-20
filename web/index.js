@@ -252,7 +252,7 @@ function upstreamBundler(input) {
     throw new Error('Bundle source is disconnected.');
 }
 
-function installMain(node, encoded = false) {
+function installMain(node) {
     const root = panel(node, 'prompt_preview');
     const button = element('button', 'Update preview');
     const status = element('div', 'Preview is manual; update after edits or library changes.');
@@ -268,8 +268,8 @@ function installMain(node, encoded = false) {
                 if (node.inputs?.some(input => input.name === name && input.link != null)) throw new Error(`Preview cannot evaluate connected ${name} input.`);
             }
             const states = [];
-            const bundleInput = encoded ? node.inputs?.find(item => item.name === 'bundles') : null;
-            const bundleSource = encoded ? (bundleInput?.link != null ? upstreamBundler(bundleInput) : null) : node;
+            const bundleInput = node.inputs?.find(item => item.name === 'bundles');
+            const bundleSource = bundleInput?.link != null ? upstreamBundler(bundleInput) : null;
             for (let i = 1; i <= 8; i++) {
                 const input = bundleSource?.inputs?.find(item => item.name === `bundle_${i}`);
                 if (input?.link != null) states.push(upstreamTemplate(bundleSource, input));
@@ -291,7 +291,7 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function (...args) {
             const result = created?.apply(this, args);
             if (nodeData.name === 'TagTemplateManagerTemplate') installTemplate(this);
-            else installMain(this, nodeData.name === 'TagTemplateManagerEncodedMain');
+            else installMain(this);
             this.setSize?.([Math.max(this.size?.[0] || 0, 340), Math.max(this.size?.[1] || 0, 300)]);
             return result;
         };

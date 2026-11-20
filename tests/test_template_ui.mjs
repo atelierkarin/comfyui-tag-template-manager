@@ -150,6 +150,9 @@ testApp.graph = { links: { 1: { origin_id: 1 }, 3: { origin_id: 2 }, 4: { origin
 encoded.inputs = [{ name: 'bundles', link: 5 }];
 await encoded.panel.children[0].onclick();
 assert.deepEqual(previewBody.states, [stateA, stateB]);
+main.inputs = [{ name: 'bundles', link: 5 }];
+await main.panel.children[0].onclick();
+assert.deepEqual(previewBody.states, [stateA, stateB], 'text Main previews the Bundler in input order');
 bundler.inputs[0].link = 5;
 await encoded.panel.children[0].onclick();
 assert.match(encoded.panel.children[1].textContent, /Cycle|supports/);
