@@ -15,7 +15,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - **Breaking:** `Tag Main` replaces its eight `bundle_1`–`bundle_8` inputs with one `bundles` input. Existing workflows must connect their `Tag Template` nodes to a `Tag Template Bundler`, then connect its `bundles` output to `Tag Main`. Old connections are not migrated automatically; verify the preview and output after reconnecting.
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-11-17
 
 ### Added
 
