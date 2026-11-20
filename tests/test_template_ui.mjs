@@ -128,4 +128,32 @@ await main.panel.children[0].onclick();
 assert.equal(previewBody.channel, 'negative');
 assert.equal(previewBody.text, 'custom');
 assert.equal(main.panel.children[3].textContent, 'bad, custom');
+class EncodedMainNode {
+    constructor() {
+        this.widgets = [{ name: 'channel', value: 'negative' }, { name: 'text', value: 'custom' },
+            { name: 'deduplicate', value: false }];
+        this.inputs = []; this.size = [300, 200];
+    }
+    addDOMWidget(name, type, element) { this.panel = element; }
+    setSize(size) { this.size = size; }
+}
+await extension.beforeRegisterNodeDef(EncodedMainNode, { name: 'TagTemplateManagerEncodedMain' });
+const encoded = new EncodedMainNode(); encoded.onNodeCreated();
+const stateA = { version: 1, template_id: 'a', preset_id: null, blocks: {} };
+const stateB = { version: 1, template_id: 'b', preset_id: null, blocks: {} };
+const sourceA = { type: 'TagTemplateManagerTemplate', widgets: [{ name: 'state', value: JSON.stringify(stateA) }] };
+const sourceB = { type: 'TagTemplateManagerTemplate', widgets: [{ name: 'state', value: JSON.stringify(stateB) }] };
+const bundler = { type: 'TagTemplateManagerBundler', inputs: [{ name: 'bundle_3', link: 3 }, { name: 'bundle_1', link: 1 }] };
+const reroute = { type: 'Reroute', inputs: [{ link: 4 }] };
+const nodes = { 1: sourceA, 2: sourceB, 3: bundler, 4: reroute };
+testApp.graph = { links: { 1: { origin_id: 1 }, 3: { origin_id: 2 }, 4: { origin_id: 3 }, 5: { origin_id: 4 } }, getNodeById: id => nodes[id] };
+encoded.inputs = [{ name: 'bundles', link: 5 }];
+await encoded.panel.children[0].onclick();
+assert.deepEqual(previewBody.states, [stateA, stateB]);
+main.inputs = [{ name: 'bundles', link: 5 }];
+await main.panel.children[0].onclick();
+assert.deepEqual(previewBody.states, [stateA, stateB], 'text Main previews the Bundler in input order');
+bundler.inputs[0].link = 5;
+await encoded.panel.children[0].onclick();
+assert.match(encoded.panel.children[1].textContent, /Cycle|supports/);
 console.log('Template UI: OK');

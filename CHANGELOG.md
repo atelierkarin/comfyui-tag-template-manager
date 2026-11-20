@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - Unreleased
+## [0.4.0] - 2026-11-20
+
+### Added
+
+- Collect up to eight template bundles with `Tag Template Bundler` and produce text and CLIP conditioning with `Tag Main (Encode)`.
+
+### Changed
+
+- **Breaking:** `Tag Main` replaces its eight `bundle_1`–`bundle_8` inputs with one `bundles` input. Existing workflows must connect their `Tag Template` nodes to a `Tag Template Bundler`, then connect its `bundles` output to `Tag Main`. Old connections are not migrated automatically; verify the preview and output after reconnecting.
+
+## [0.3.0] - 2026-11-17
 
 ### Added
 

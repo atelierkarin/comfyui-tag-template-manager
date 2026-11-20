@@ -232,6 +232,26 @@ function upstreamTemplate(node, input) {
     throw new Error('Bundle source is disconnected.');
 }
 
+function upstreamBundler(input) {
+    let linkId = input?.link;
+    const visited = new Set();
+    while (linkId != null) {
+        if (visited.has(linkId)) throw new Error('Cycle in bundle connection.');
+        visited.add(linkId);
+        const links = app.graph.links;
+        const link = links?.get ? links.get(linkId) : links?.[linkId];
+        const source = link && app.graph.getNodeById(link.origin_id);
+        if (!source) throw new Error('Bundle source not found.');
+        if (source.comfyClass === 'TagTemplateManagerBundler' || source.type === 'TagTemplateManagerBundler') return source;
+        if (source.type === 'Reroute' || source.comfyClass === 'Reroute') {
+            linkId = source.inputs?.[0]?.link;
+            continue;
+        }
+        throw new Error('Preview supports Bundler nodes and reroutes only.');
+    }
+    throw new Error('Bundle source is disconnected.');
+}
+
 function installMain(node) {
     const root = panel(node, 'prompt_preview');
     const button = element('button', 'Update preview');
@@ -248,9 +268,11 @@ function installMain(node) {
                 if (node.inputs?.some(input => input.name === name && input.link != null)) throw new Error(`Preview cannot evaluate connected ${name} input.`);
             }
             const states = [];
+            const bundleInput = node.inputs?.find(item => item.name === 'bundles');
+            const bundleSource = bundleInput?.link != null ? upstreamBundler(bundleInput) : null;
             for (let i = 1; i <= 8; i++) {
-                const input = node.inputs?.find(item => item.name === `bundle_${i}`);
-                if (input?.link != null) states.push(upstreamTemplate(node, input));
+                const input = bundleSource?.inputs?.find(item => item.name === `bundle_${i}`);
+                if (input?.link != null) states.push(upstreamTemplate(bundleSource, input));
             }
             const body = { states, channel: widget(node, 'channel')?.value ?? 'positive', text: widget(node, 'text')?.value ?? '', deduplicate: widget(node, 'deduplicate')?.value ?? false, exclude: widget(node, 'exclude')?.value ?? '' };
             const result = await request('/preview-single', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -264,7 +286,7 @@ function installMain(node) {
 app.registerExtension({
     name: 'tag-template-manager.nodes',
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (!['TagTemplateManagerTemplate', 'TagTemplateManagerSingleMain'].includes(nodeData.name)) return;
+        if (!['TagTemplateManagerTemplate', 'TagTemplateManagerSingleMain', 'TagTemplateManagerEncodedMain'].includes(nodeData.name)) return;
         const created = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function (...args) {
             const result = created?.apply(this, args);
