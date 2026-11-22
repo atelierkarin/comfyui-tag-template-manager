@@ -157,3 +157,53 @@ bundler.inputs[0].link = 5;
 await encoded.panel.children[0].onclick();
 assert.match(encoded.panel.children[1].textContent, /Cycle|supports/);
 console.log('Template UI: OK');
+
+// Direct selection survives workflow serialization and is included in preview.
+class DirectMainNode extends MainNode {
+    constructor() { super(); this.widgets.push({ name: 'direct_state', value: '' }); }
+}
+await extension.beforeRegisterNodeDef(DirectMainNode, { name: 'TagTemplateManagerSingleMain' });
+const directMain = new DirectMainNode(); directMain.onNodeCreated();
+globalThis.testApi.fetchApi = async (path, options) => {
+    if (path.endsWith('/templates')) return { ok: true, json: async () => ({ templates: [template], problems: [] }) };
+    if (path.includes('/templates/')) return { ok: true, json: async () => template };
+    previewBody = JSON.parse(options.body); return { ok: true, json: async () => ({ text: 'result' }) };
+};
+await directMain._tagDirectRefresh();
+const add = directMain.panel.children.find(child => child.textContent === 'Add template preset');
+assert.ok(add);
+add.onclick();
+let directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
+assert.equal(directState.items.length, 1);
+const rows = directMain.panel.children.find(child => child.directRows);
+let row = rows.children[0];
+row.children[0].value = template.id; await row.children[0].onchange();
+row = rows.children[0]; row.children[1].value = 'p'; row.children[1].onchange();
+directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
+assert.equal(directState.items[0].preset_id, 'p');
+await directMain.panel.children[0].onclick();
+assert.equal(JSON.parse(previewBody.direct_state).items[0].preset_id, 'p');
+let releasePreview;
+globalThis.testApi.fetchApi = async () => await new Promise(resolve => { releasePreview = resolve; });
+const pendingDirectPreview = directMain.panel.children[0].onclick();
+directMain.widgets.find(w => w.name === 'text').value = 'changed while loading';
+releasePreview({ ok: true, json: async () => ({ text: 'old result' }) });
+await pendingDirectPreview;
+assert.notEqual(directMain.panel.children[3].textContent, 'old result');
+globalThis.testApi.fetchApi = async (path, options) => {
+    if (path.endsWith('/templates')) return { ok: true, json: async () => ({ templates: [template], problems: [] }) };
+    if (path.includes('/templates/')) return { ok: true, json: async () => template };
+    previewBody = JSON.parse(options.body); return { ok: true, json: async () => ({ text: 'result' }) };
+};
+row = rows.children[0]; await row.children[2].onclick();
+assert.equal(JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value).items[0].mode, 'snapshot');
+const restored = new DirectMainNode();
+restored.widgets.find(w => w.name === 'direct_state').value = directMain.widgets.find(w => w.name === 'direct_state').value;
+restored.onNodeCreated(); await restored._tagDirectRefresh();
+assert.equal(restored.panel.children.find(child => child.directRows).children[0].children[2].textContent, 'Switch to Live');
+row = rows.children[0]; row.children[6].onclick();
+assert.equal(JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value).items.length, 0);
+const invalidDirect = new DirectMainNode();
+invalidDirect.widgets.find(w => w.name === 'direct_state').value = '{"version":1,"items":[null]}';
+assert.doesNotThrow(() => invalidDirect.onNodeCreated());
+assert.match(invalidDirect.panel.children.find(child => child.textContent === 'Invalid direct selection state.').textContent, /Invalid/);

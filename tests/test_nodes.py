@@ -17,6 +17,23 @@ def state(selection=None):
 
 
 class NodeServiceTests(unittest.TestCase):
+    def test_direct_live_snapshot_order_and_validation(self):
+        from services.node_service import resolve_direct
+        with temporary_directory() as root:
+            store = TemplateStore(root); template = sample(); store.create(template)
+            live = {'mode': 'live', 'template_id': 'test', 'preset_id': 'p'}
+            snap = dict(live, mode='snapshot', template=template)
+            encode = lambda items: json.dumps({'version': 1, 'items': items})
+            self.assertEqual(compose(resolve_direct(store, encode([live, snap])))[0], '(x, y), cat, (x, y), cat')
+            changed = sample(); changed['blocks'][1]['tags'] = 'new'; store.update(changed)
+            self.assertEqual(compose(resolve_direct(store, encode([live, snap])))[0], 'new, (x, y), cat')
+            store.delete('test')
+            self.assertEqual(compose(resolve_direct(store, encode([snap])))[0], '(x, y), cat')
+            for bad in ([live], [dict(snap, preset_id='missing')], [dict(snap, template_id='wrong')], [snap] * 9, [{}]):
+                with self.subTest(bad=bad), self.assertRaises((ValueError, NotFoundError)):
+                    resolve_direct(store, encode(bad))
+            with self.assertRaises(ValueError): resolve_direct(store, '{"version":1,"version":1,"items":[]}')
+
     def test_state_validation(self):
         self.assertEqual(decode_state(state())["template_id"], "test")
         for value in ('', '{}', '{', '{"version": 2}', state({"a": True})):

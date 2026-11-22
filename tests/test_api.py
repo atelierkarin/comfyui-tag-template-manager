@@ -26,6 +26,26 @@ class Request:
 
 
 class ApiTests(unittest.TestCase):
+    def test_direct_preview_matches_execution_with_bundler(self):
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            state = {'version': 1, 'template_id': 'test', 'preset_id': None,
+                     'blocks': {'a': True, 'b': False, 'n': True}}
+            direct = json.dumps({'version': 1, 'items': [{'mode': 'live', 'template_id': 'test', 'preset_id': 'p'}]})
+            body = {'states': [state], 'channel': 'positive', 'text': 'extra', 'deduplicate': False, 'direct_state': direct}
+            with patch('tag_api_test.nodes.current_store', return_value=store), patch.object(routes, 'current_store', return_value=store):
+                bundle = TagTemplateNode().execute(json.dumps(state))[0]
+                expected = TagSingleMainNode().execute('positive', 'extra', False, bundles=[bundle], direct_state=direct)[0]
+                response = asyncio.run(routes.preview_single(Request(body)))
+                self.assertEqual(json.loads(response.text)['text'], expected)
+                self.assertEqual(expected, '(x, y), cat, cat, dog, extra')
+                body['direct_state'] = '{}'
+                self.assertEqual(asyncio.run(routes.preview_single(Request(body))).status, 400)
+                store.delete('test')
+                body['direct_state'] = direct; body['states'] = []
+                response = asyncio.run(routes.preview_single(Request(body)))
+                self.assertIn('Direct selection 1', json.loads(response.text)['error'])
+
     def test_single_main_accepts_bundle_list(self):
         from tag_api_test import nodes
         self.assertEqual(TagSingleMainNode.INPUT_TYPES()['optional']['bundles'], ('TAG_BUNDLE_LIST',))
