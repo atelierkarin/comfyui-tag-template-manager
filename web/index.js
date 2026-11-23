@@ -252,6 +252,17 @@ function upstreamBundler(input) {
     throw new Error('Bundle source is disconnected.');
 }
 
+function incompleteDirectWarning(value) {
+    try {
+        const state = JSON.parse(value || '{"version":1,"items":[]}');
+        if (!Array.isArray(state.items)) return '';
+        const count = state.items.filter(item => item?.mode === 'live' &&
+            typeof item.template_id === 'string' && typeof item.preset_id === 'string' &&
+            (!item.template_id || !item.preset_id)).length;
+        return count ? `${count} incomplete template ${count === 1 ? 'row is' : 'rows are'} ignored if valid; select a Template and Preset.` : '';
+    } catch { return ''; }
+}
+
 function installMain(node) {
     const root = panel(node, 'prompt_preview');
     const button = element('button', 'Update preview');
@@ -266,6 +277,8 @@ function installMain(node) {
         if (directWidget.element) directWidget.element.style.display = 'none';
         const heading = element('strong', 'Direct template presets');
         const message = element('div', '');
+        const warning = element('div', ''); warning.directWarning = true;
+        warning.style.color = '#ffcc80';
         const rows = element('div'); rows.directRows = true;
         Object.assign(rows.style, { display: 'grid', gap: '12px', marginTop: '16px' });
         const add = element('button', 'Add template preset');
@@ -290,7 +303,7 @@ function installMain(node) {
             const close = element('button', 'Close'); close.type = 'button'; close.onclick = closeDialog;
             close.style.marginTop = '12px';
             dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
-            dialog.append(heading, message, add, refresh, close, rows);
+            dialog.append(heading, message, warning, add, refresh, close, rows);
             document.body.append(dialog); dialog.showModal();
             refreshLibrary();
         };
@@ -316,6 +329,7 @@ function installMain(node) {
             rows.replaceChildren();
             let state;
             try { state = read(); } catch (error) { manage.textContent = 'Template (?)'; message.textContent = error.message; add.disabled = true; return; }
+            warning.textContent = incompleteDirectWarning(directWidget.value);
             manage.textContent = `Template (${state.items.filter(item => item.template_id).length})`;
             add.disabled = state.items.length >= 8;
             state.items.forEach((item, index) => {
@@ -422,7 +436,8 @@ function installMain(node) {
                 status.textContent = 'Inputs changed; update preview.'; return;
             }
             output.textContent = result.text;
-            status.textContent = 'Preview at last update. Refresh after edits or library changes.';
+            const warning = directWidget ? incompleteDirectWarning(body.direct_state) : '';
+            status.textContent = `${warning ? warning + ' ' : ''}Preview at last update. Refresh after edits or library changes.`;
         } catch (error) { if (current === sequence) status.textContent = error.message; }
     };
 }

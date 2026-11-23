@@ -90,11 +90,15 @@ def resolve_direct(store, text):
             fields = {'mode', 'template_id', 'preset_id'} | ({'template'} if item['mode'] == 'snapshot' else set())
             if set(item) != fields:
                 raise ValidationError('Invalid selection fields.')
+            if item['mode'] == 'live' and item['template_id'] == '' and item['preset_id'] == '':
+                continue
             validate_id(item['template_id'], 'template_id')
-            validate_id(item['preset_id'], 'preset_id')
             template = validate_template(item['template']) if item['mode'] == 'snapshot' else store.load(item['template_id'])
             if template['id'] != item['template_id']:
                 raise ValidationError('Snapshot template ID does not match.')
+            if item['mode'] == 'live' and item['preset_id'] == '':
+                continue
+            validate_id(item['preset_id'], 'preset_id')
             selection = apply_preset(template, item['preset_id'])
             bundles.append({'template_id': item['template_id'], 'template': template, 'blocks': selection})
         except NotFoundError as exc:

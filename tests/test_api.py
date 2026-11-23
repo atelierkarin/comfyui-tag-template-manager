@@ -26,6 +26,29 @@ class Request:
 
 
 class ApiTests(unittest.TestCase):
+    def test_unselected_direct_rows_are_ignored_by_preview_and_both_mains(self):
+        from tag_api_test import nodes
+        with temporary_directory() as root:
+            store = TemplateStore(root); store.create(sample())
+            empty = {'mode': 'live', 'template_id': '', 'preset_id': ''}
+            no_preset = {'mode': 'live', 'template_id': 'test', 'preset_id': ''}
+            valid = {'mode': 'live', 'template_id': 'test', 'preset_id': 'p'}
+            direct = json.dumps({'version': 1, 'items': [empty, valid, no_preset]})
+            body = {'states': [], 'channel': 'positive', 'text': 'extra', 'deduplicate': False, 'direct_state': direct}
+            class Clip:
+                def tokenize(self, text): return text
+                def encode_from_tokens_scheduled(self, tokens): return tokens
+            with patch('tag_api_test.nodes.current_store', return_value=store), patch.object(routes, 'current_store', return_value=store):
+                result = TagSingleMainNode().execute('positive', 'extra', False, direct_state=direct)[0]
+                self.assertEqual(result, '(x, y), cat, extra')
+                self.assertEqual(nodes.TagEncodedMainNode().execute(Clip(), 'positive', 'extra', False, direct_state=direct), (result, result))
+                response = asyncio.run(routes.preview_single(Request(body)))
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.text)['text'], result)
+                for item in (dict(empty, template_id='../bad'), dict(empty, template_id='missing'), dict(empty, template_id='missing', preset_id='p'), dict(empty, preset_id='p')):
+                    body['direct_state'] = json.dumps({'version': 1, 'items': [item]})
+                    self.assertNotEqual(asyncio.run(routes.preview_single(Request(body))).status, 200)
+
     def test_direct_preview_matches_execution_with_bundler(self):
         with temporary_directory() as root:
             store = TemplateStore(root); store.create(sample())

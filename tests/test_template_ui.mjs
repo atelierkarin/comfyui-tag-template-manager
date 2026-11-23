@@ -191,6 +191,9 @@ assert.ok(!directMain.panel.children.includes(add), 'management controls are out
 add.onclick();
 let directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
 assert.equal(directState.items.length, 1);
+assert.match(dialog.children.find(child => child.directWarning).textContent, /1.*ignored/i);
+await directMain.panel.children.find(child => child.textContent === 'Update preview').onclick();
+assert.match(directMain.panel.children.find(child => child.textContent?.includes('ignored')).textContent, /1.*ignored/i);
 const rows = dialog.children.find(child => child.directRows);
 let row = rows.children[0];
 row.children[0].value = template.id; await row.children[0].onchange();
@@ -198,6 +201,7 @@ row = rows.children[0]; row.children[1].value = 'p'; row.children[1].onchange();
 directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
 assert.equal(directState.items[0].preset_id, 'p');
 assert.equal(manage.textContent, 'Template (1)');
+assert.equal(dialog.children.find(child => child.directWarning).textContent, '');
 await directMain.panel.children.find(child => child.textContent === 'Update preview').onclick();
 assert.equal(JSON.parse(previewBody.direct_state).items[0].preset_id, 'p');
 let releasePreview;
