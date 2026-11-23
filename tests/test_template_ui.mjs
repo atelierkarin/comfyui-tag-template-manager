@@ -8,9 +8,14 @@ class Element {
     append(...items) { this.children.push(...items); }
     add(item) { this.children.push(item); }
     replaceChildren(...items) { this.children = items; }
+    setAttribute(name, value) { (this.attributes ||= {})[name] = value; }
+    addEventListener(name, callback) { this[`event_${name}`] = callback; }
+    showModal() { this.open = true; }
+    close() { this.open = false; }
+    remove() { this.removed = true; }
 }
 globalThis.window = { confirm: () => true };
-globalThis.document = { createElement: tag => new Element(tag), createTextNode: text => text };
+globalThis.document = { body: new Element('body'), createElement: tag => new Element(tag), createTextNode: text => text };
 globalThis.Option = class { constructor(text, value) { this.textContent = text; this.value = value; } };
 const template = { id: 'template_verylonginternalid', name: 'Character', blocks: [
     { id: 'a', name: 'A', channel: 'positive', default_enabled: true, exclusive_group: null },
@@ -157,3 +162,81 @@ bundler.inputs[0].link = 5;
 await encoded.panel.children[0].onclick();
 assert.match(encoded.panel.children[1].textContent, /Cycle|supports/);
 console.log('Template UI: OK');
+
+// Direct selection survives workflow serialization and is included in preview.
+class DirectMainNode extends MainNode {
+    constructor() { super(); this.widgets.push({ name: 'direct_state', value: '' }); }
+}
+await extension.beforeRegisterNodeDef(DirectMainNode, { name: 'TagTemplateManagerSingleMain' });
+const directMain = new DirectMainNode(); directMain.onNodeCreated();
+assert.ok(directMain.size[1] >= 520, 'new Main reserves room for direct-selection controls');
+directMain.size = [400, 300]; directMain.onConfigure();
+assert.ok(directMain.size[1] >= 520, 'restored Main expands if the saved size is too small');
+directMain.size = [600, 700]; directMain.onConfigure();
+assert.deepEqual(directMain.size, [600, 700], 'restoring preserves a larger user-chosen size');
+globalThis.testApi.fetchApi = async (path, options) => {
+    if (path.endsWith('/templates')) return { ok: true, json: async () => ({ templates: [template], problems: [] }) };
+    if (path.includes('/templates/')) return { ok: true, json: async () => template };
+    previewBody = JSON.parse(options.body); return { ok: true, json: async () => ({ text: 'result' }) };
+};
+await directMain._tagDirectRefresh();
+const manage = directMain.panel.children.find(child => child.textContent === 'Template (0)');
+assert.ok(manage, 'Main shows the number of selected templates');
+manage.onclick();
+const dialog = document.body.children.at(-1);
+assert.equal(dialog.open, true, 'management opens in a dialog');
+const add = dialog.children.find(child => child.textContent === 'Add template preset');
+assert.ok(add);
+assert.ok(!directMain.panel.children.includes(add), 'management controls are outside the preview');
+add.onclick();
+let directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
+assert.equal(directState.items.length, 1);
+assert.match(dialog.children.find(child => child.directWarning).textContent, /1.*ignored/i);
+await directMain.panel.children.find(child => child.textContent === 'Update preview').onclick();
+assert.match(directMain.panel.children.find(child => child.textContent?.includes('ignored')).textContent, /1.*ignored/i);
+const rows = dialog.children.find(child => child.directRows);
+let row = rows.children[0];
+row.children[0].value = template.id; await row.children[0].onchange();
+row = rows.children[0]; row.children[1].value = 'p'; row.children[1].onchange();
+directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
+assert.equal(directState.items[0].preset_id, 'p');
+assert.equal(manage.textContent, 'Template (1)');
+assert.equal(dialog.children.find(child => child.directWarning).textContent, '');
+await directMain.panel.children.find(child => child.textContent === 'Update preview').onclick();
+assert.equal(JSON.parse(previewBody.direct_state).items[0].preset_id, 'p');
+let releasePreview;
+globalThis.testApi.fetchApi = async () => await new Promise(resolve => { releasePreview = resolve; });
+const pendingDirectPreview = directMain.panel.children.find(child => child.textContent === 'Update preview').onclick();
+directMain.widgets.find(w => w.name === 'text').value = 'changed while loading';
+releasePreview({ ok: true, json: async () => ({ text: 'old result' }) });
+await pendingDirectPreview;
+assert.notEqual(directMain.panel.children.find(child => child.tagName === 'pre').textContent, 'old result');
+globalThis.testApi.fetchApi = async (path, options) => {
+    if (path.endsWith('/templates')) return { ok: true, json: async () => ({ templates: [template], problems: [] }) };
+    if (path.includes('/templates/')) return { ok: true, json: async () => template };
+    previewBody = JSON.parse(options.body); return { ok: true, json: async () => ({ text: 'result' }) };
+};
+row = rows.children[0]; await row.children[2].onclick();
+assert.equal(JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value).items[0].mode, 'snapshot');
+const restored = new DirectMainNode();
+restored.widgets.find(w => w.name === 'direct_state').value = directMain.widgets.find(w => w.name === 'direct_state').value;
+restored.onNodeCreated(); await restored._tagDirectRefresh();
+const restoredManage = restored.panel.children.find(child => child.textContent === 'Template (1)');
+assert.ok(restoredManage); restoredManage.onclick();
+assert.equal(document.body.children.at(-1).children.find(child => child.directRows).children[0].children[2].textContent, 'Switch to Live');
+row = rows.children[0]; row.children[6].onclick();
+assert.equal(JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value).items.length, 0);
+assert.equal(manage.textContent, 'Template (0)');
+dialog.children.find(child => child.textContent === 'Close').onclick();
+assert.equal(dialog.removed, true);
+manage.onclick();
+const reopened = document.body.children.at(-1);
+assert.equal(reopened.open, true);
+assert.equal(reopened.children.find(child => child.directRows).children.length, 0, 'reopening retains edits');
+reopened.event_cancel({ preventDefault() {} });
+assert.equal(reopened.removed, true, 'Escape closes and removes the dialog');
+const invalidDirect = new DirectMainNode();
+invalidDirect.widgets.find(w => w.name === 'direct_state').value = '{"version":1,"items":[null]}';
+assert.doesNotThrow(() => invalidDirect.onNodeCreated());
+invalidDirect.panel.children.find(child => child.textContent === 'Template (?)').onclick();
+assert.match(document.body.children.at(-1).children.find(child => child.textContent === 'Invalid direct selection state.').textContent, /Invalid/);

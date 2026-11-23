@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-23
+
+### Fixed
+
+- Ignore incomplete direct-selection rows with a warning, while reporting missing or corrupt selected templates and presets.
+
+### Added
+
+- Select up to eight ordered Template/Preset pairs in a management dialog on either Main, with per-row Live or Snapshot mode and optional Bundler input.
+
 ## [0.4.0] - 2026-11-20
 
 ### Added

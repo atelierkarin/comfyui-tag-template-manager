@@ -5,7 +5,7 @@ import logging
 from aiohttp import web
 
 from ..nodes import current_store as node_store
-from ..services.node_service import UnsupportedModeError, compose_single, decode_state, make_bundle
+from ..services.node_service import UnsupportedModeError, compose_single, decode_state, make_bundle, resolve_direct
 from ..services.prompt_builder import format_tags
 from ..services.schema import ValidationError, parse_template, validate_id
 from ..services.template_store import AlreadyExistsError, ConflictError, NotFoundError, StoreError
@@ -165,12 +165,14 @@ async def delete_template(request):
 async def preview_single(request):
     store = current_store(request)
     body = await request.json()
-    if not isinstance(body, dict) or set(body) not in ({'states', 'channel', 'text', 'deduplicate'}, {'states', 'channel', 'text', 'deduplicate', 'exclude'}):
+    required = {'states', 'channel', 'text', 'deduplicate'}
+    if not isinstance(body, dict) or not required <= set(body) or set(body) - required - {'exclude', 'direct_state'}:
         raise ValidationError('Invalid preview request.')
     if not isinstance(body['states'], list) or len(body['states']) > 8:
         raise ValidationError('Preview requires at most eight template states.')
     import json
-    bundles = [make_bundle(store, decode_state(json.dumps(state))) for state in body['states']]
+    bundles = resolve_direct(store, body.get('direct_state', ''))
+    bundles += [make_bundle(store, decode_state(json.dumps(state))) for state in body['states']]
     return web.json_response({'text': compose_single(bundles, body['channel'], body['text'], body['deduplicate'], body.get('exclude', ''))})
 
 

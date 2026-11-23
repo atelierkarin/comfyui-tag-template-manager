@@ -252,14 +252,168 @@ function upstreamBundler(input) {
     throw new Error('Bundle source is disconnected.');
 }
 
+function incompleteDirectWarning(value) {
+    try {
+        const state = JSON.parse(value || '{"version":1,"items":[]}');
+        if (!Array.isArray(state.items)) return '';
+        const count = state.items.filter(item => item?.mode === 'live' &&
+            typeof item.template_id === 'string' && typeof item.preset_id === 'string' &&
+            (!item.template_id || !item.preset_id)).length;
+        return count ? `${count} incomplete template ${count === 1 ? 'row is' : 'rows are'} ignored if valid; select a Template and Preset.` : '';
+    } catch { return ''; }
+}
+
 function installMain(node) {
     const root = panel(node, 'prompt_preview');
     const button = element('button', 'Update preview');
     const status = element('div', 'Preview is manual; update after edits or library changes.');
     const output = element('pre');
     Object.assign(output.style, { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
-    root.append(button, status, element('strong', 'Preview'), output);
     let sequence = 0;
+    const directWidget = widget(node, 'direct_state');
+    if (directWidget) {
+        directWidget.type = 'hidden'; directWidget.computeSize = () => [0, -4]; directWidget.draw = () => {};
+        if (directWidget.inputEl) directWidget.inputEl.style.display = 'none';
+        if (directWidget.element) directWidget.element.style.display = 'none';
+        const heading = element('strong', 'Direct template presets');
+        const message = element('div', '');
+        const warning = element('div', ''); warning.directWarning = true;
+        warning.style.color = '#ffcc80';
+        const rows = element('div'); rows.directRows = true;
+        Object.assign(rows.style, { display: 'grid', gap: '12px', marginTop: '16px' });
+        const add = element('button', 'Add template preset');
+        const refresh = element('button', 'Refresh library');
+        Object.assign(add.style, { margin: '12px 8px 0 0' });
+        Object.assign(refresh.style, { margin: '12px 8px 0 0' });
+        const manage = element('button', 'Template (0)');
+        manage.type = 'button';
+        root.append(manage);
+        let dialog = null;
+        function closeDialog() {
+            if (!dialog) return;
+            const current = dialog; dialog = null;
+            current.close(); current.remove();
+        }
+        manage.onclick = () => {
+            if (dialog) return;
+            dialog = element('dialog');
+            Object.assign(dialog.style, { width: 'min(900px, 92vw)', maxWidth: 'none', maxHeight: '85vh', overflow: 'auto',
+                background: '#252525', color: '#eee', border: '1px solid #777', borderRadius: '8px', padding: '16px' });
+            dialog.setAttribute('aria-label', 'Template presets');
+            const close = element('button', 'Close'); close.type = 'button'; close.onclick = closeDialog;
+            close.style.marginTop = '12px';
+            dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
+            dialog.append(heading, message, warning, add, refresh, close, rows);
+            document.body.append(dialog); dialog.showModal();
+            refreshLibrary();
+        };
+        const removed = node.onRemoved;
+        node.onRemoved = function (...args) { ++generation; closeDialog(); return removed?.apply(this, args); };
+        let list = [], cache = new Map(), generation = 0;
+        function read() {
+            if (!directWidget.value) return { version: 1, items: [] };
+            const state = JSON.parse(directWidget.value);
+            if (!state || state.version !== 1 || !Array.isArray(state.items) || state.items.length > 8 || state.items.some(item =>
+                !item || !['live', 'snapshot'].includes(item.mode) || typeof item.template_id !== 'string' ||
+                typeof item.preset_id !== 'string' || (item.mode === 'snapshot' &&
+                    (!item.template || !Array.isArray(item.template.presets))))) throw new Error('Invalid direct selection state.');
+            return state;
+        }
+        function save(state) {
+            ++generation; ++sequence;
+            directWidget.value = JSON.stringify(state);
+            output.textContent = ''; status.textContent = 'Selection changed; update preview.';
+            node.setDirtyCanvas?.(true, true); render();
+        }
+        function render() {
+            rows.replaceChildren();
+            let state;
+            try { state = read(); } catch (error) { manage.textContent = 'Template (?)'; message.textContent = error.message; add.disabled = true; return; }
+            warning.textContent = incompleteDirectWarning(directWidget.value);
+            manage.textContent = `Template (${state.items.filter(item => item.template_id).length})`;
+            add.disabled = state.items.length >= 8;
+            state.items.forEach((item, index) => {
+                const row = element('div');
+                Object.assign(row.style, { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px',
+                    padding: '12px', border: '1px solid #666', borderRadius: '6px', background: '#303030' });
+                const select = element('select');
+                Object.assign(select.style, { flex: '1 1 220px', minWidth: '0' });
+                select.add(new Option('Select template…', ''));
+                for (const entry of list) select.add(new Option(`${entry.name} (${entry.id})`, entry.id));
+                if (item.template_id && !list.some(entry => entry.id === item.template_id)) select.add(new Option(`Missing: ${item.template_id}`, item.template_id));
+                select.value = item.template_id || '';
+                const preset = element('select'); preset.add(new Option('Select preset…', ''));
+                Object.assign(preset.style, { flex: '1 1 180px', minWidth: '0' });
+                const template = item.mode === 'snapshot' ? item.template : cache.get(item.template_id);
+                for (const entry of template?.presets || []) preset.add(new Option(`${entry.name} (${entry.id})`, entry.id));
+                if (item.preset_id && !template?.presets?.some(entry => entry.id === item.preset_id)) preset.add(new Option(`Missing: ${item.preset_id}`, item.preset_id));
+                preset.value = item.preset_id || '';
+                select.onchange = async () => {
+                    if (item.mode === 'snapshot' && !window.confirm('Leave this snapshot and choose a Live template?')) { render(); return; }
+                    state.items[index] = { mode: 'live', template_id: select.value, preset_id: '' }; save(state);
+                    if (select.value) await loadTemplate(select.value);
+                };
+                preset.onchange = () => { state.items[index].preset_id = preset.value; save(state); };
+                const mode = element('button', item.mode === 'snapshot' ? 'Switch to Live' : 'Create snapshot');
+                mode.onclick = async () => {
+                    const token = ++generation, original = directWidget.value;
+                    try {
+                        if (!item.template_id || !item.preset_id) throw new Error('Select a template and preset first.');
+                        const live = await request(`/templates/${encodeURIComponent(item.template_id)}`);
+                        if (token !== generation || original !== directWidget.value) return;
+                        if (!live.presets?.some(p => p.id === item.preset_id)) throw new Error('Preset not found in library.');
+                        if (!window.confirm(item.mode === 'snapshot' ? 'Switch to Live? Output may change.' : 'Create a snapshot from the current library template?')) return;
+                        cache.set(item.template_id, live);
+                        state.items[index] = item.mode === 'snapshot' ? { mode: 'live', template_id: item.template_id, preset_id: item.preset_id } : { ...item, mode: 'snapshot', template: structuredClone(live) };
+                        save(state);
+                    } catch (error) { if (token === generation) message.textContent = error.message; }
+                };
+                const update = element('button', 'Update snapshot'); update.disabled = item.mode !== 'snapshot';
+                update.onclick = async () => {
+                    const token = ++generation, original = directWidget.value;
+                    try {
+                        const live = await request(`/templates/${encodeURIComponent(item.template_id)}`);
+                        if (token !== generation || original !== directWidget.value) return;
+                        if (!live.presets?.some(p => p.id === item.preset_id)) throw new Error('Preset not found in library.');
+                        if (!window.confirm('Replace this snapshot with the current library template?')) return;
+                        state.items[index] = { ...item, template: structuredClone(live) }; save(state);
+                    } catch (error) { if (token === generation) message.textContent = error.message; }
+                };
+                const up = element('button', '↑'); up.disabled = index === 0;
+                up.onclick = () => { [state.items[index - 1], state.items[index]] = [state.items[index], state.items[index - 1]]; save(state); };
+                const down = element('button', '↓'); down.disabled = index === state.items.length - 1;
+                down.onclick = () => { [state.items[index + 1], state.items[index]] = [state.items[index], state.items[index + 1]]; save(state); };
+                const remove = element('button', 'Remove'); remove.onclick = () => { state.items.splice(index, 1); save(state); };
+                row.append(select, preset, mode, update, up, down, remove); rows.append(row);
+            });
+        }
+        async function loadTemplate(id) {
+            const token = ++generation;
+            try {
+                const template = await request(`/templates/${encodeURIComponent(id)}`);
+                if (token !== generation) return;
+                cache.set(id, template); message.textContent = ''; render();
+            } catch (error) { if (token === generation) { cache.delete(id); message.textContent = error.message; render(); } }
+        }
+        async function refreshLibrary() {
+            const token = ++generation;
+            try {
+                const result = await request('/templates');
+                const state = read();
+                const ids = [...new Set(state.items.filter(item => item.mode === 'live' && item.template_id).map(item => item.template_id))];
+                const loaded = await Promise.all(ids.map(async id => { try { return [id, await request(`/templates/${encodeURIComponent(id)}`)]; } catch { return [id, null]; } }));
+                if (token !== generation) return;
+                list = result.templates; cache = new Map(loaded.filter(([, value]) => value));
+                message.textContent = result.problems?.length ? `Cannot read template files: ${result.problems.join(', ')}` : '';
+                render();
+            } catch (error) { if (token === generation) { message.textContent = error.message; render(); } }
+        }
+        add.onclick = () => { try { const state = read(); if (state.items.length < 8) { state.items.push({ mode: 'live', template_id: '', preset_id: '' }); save(state); } } catch (error) { message.textContent = error.message; } };
+        refresh.onclick = refreshLibrary;
+        node._tagDirectRefresh = refreshLibrary;
+        render(); setTimeout(refreshLibrary, 0);
+    }
+    root.append(button, status, element('strong', 'Preview'), output);
     button.onclick = async () => {
         const current = ++sequence;
         output.textContent = ''; status.textContent = 'Loading…';
@@ -275,10 +429,15 @@ function installMain(node) {
                 if (input?.link != null) states.push(upstreamTemplate(bundleSource, input));
             }
             const body = { states, channel: widget(node, 'channel')?.value ?? 'positive', text: widget(node, 'text')?.value ?? '', deduplicate: widget(node, 'deduplicate')?.value ?? false, exclude: widget(node, 'exclude')?.value ?? '' };
+            if (directWidget) body.direct_state = directWidget.value || '';
             const result = await request('/preview-single', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             if (current !== sequence) return;
+            if (['channel', 'text', 'deduplicate', 'exclude'].some(name => (widget(node, name)?.value ?? (name === 'channel' ? 'positive' : name === 'deduplicate' ? false : '')) !== body[name]) || (directWidget && (directWidget.value || '') !== body.direct_state)) {
+                status.textContent = 'Inputs changed; update preview.'; return;
+            }
             output.textContent = result.text;
-            status.textContent = 'Preview at last update. Refresh after edits or library changes.';
+            const warning = directWidget ? incompleteDirectWarning(body.direct_state) : '';
+            status.textContent = `${warning ? warning + ' ' : ''}Preview at last update. Refresh after edits or library changes.`;
         } catch (error) { if (current === sequence) status.textContent = error.message; }
     };
 }
@@ -292,14 +451,19 @@ app.registerExtension({
             const result = created?.apply(this, args);
             if (nodeData.name === 'TagTemplateManagerTemplate') installTemplate(this);
             else installMain(this);
-            this.setSize?.([Math.max(this.size?.[0] || 0, 340), Math.max(this.size?.[1] || 0, 300)]);
+            const minHeight = nodeData.name === 'TagTemplateManagerTemplate' ? 300 : 520;
+            this.setSize?.([Math.max(this.size?.[0] || 0, 340), Math.max(this.size?.[1] || 0, minHeight)]);
             return result;
         };
-        if (nodeData.name === 'TagTemplateManagerTemplate') {
+        if (nodeData.name === 'TagTemplateManagerTemplate' || nodeData.name === 'TagTemplateManagerSingleMain' || nodeData.name === 'TagTemplateManagerEncodedMain') {
             const configured = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function (...args) {
                 const result = configured?.apply(this, args);
+                if (nodeData.name !== 'TagTemplateManagerTemplate') {
+                    this.setSize?.([Math.max(this.size?.[0] || 0, 340), Math.max(this.size?.[1] || 0, 520)]);
+                }
                 setTimeout(() => this._tagTemplateRefresh?.(), 0);
+                setTimeout(() => this._tagDirectRefresh?.(), 0);
                 return result;
             };
         }
