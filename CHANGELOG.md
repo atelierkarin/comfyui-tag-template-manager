@@ -9,7 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- Select up to eight ordered Template/Preset pairs directly in either Main, with per-row Live or Snapshot mode and optional Bundler input.
+- Select up to eight ordered Template/Preset pairs in a management dialog on either Main, with per-row Live or Snapshot mode and optional Bundler input.
 
 ## [0.4.0] - 2026-11-20
 

@@ -269,7 +269,29 @@ function installMain(node) {
         const rows = element('div'); rows.directRows = true;
         const add = element('button', 'Add template preset');
         const refresh = element('button', 'Refresh library');
-        root.append(heading, message, add, refresh, rows);
+        const manage = element('button', 'Template (0)');
+        manage.type = 'button';
+        root.append(manage);
+        let dialog = null;
+        function closeDialog() {
+            if (!dialog) return;
+            const current = dialog; dialog = null;
+            current.close(); current.remove();
+        }
+        manage.onclick = () => {
+            if (dialog) return;
+            dialog = element('dialog');
+            Object.assign(dialog.style, { width: 'min(900px, 92vw)', maxWidth: 'none', maxHeight: '85vh', overflow: 'auto',
+                background: '#252525', color: '#eee', border: '1px solid #777', borderRadius: '8px', padding: '16px' });
+            dialog.setAttribute('aria-label', 'Template presets');
+            const close = element('button', 'Close'); close.type = 'button'; close.onclick = closeDialog;
+            dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
+            dialog.append(heading, message, add, refresh, rows, close);
+            document.body.append(dialog); dialog.showModal();
+            refreshLibrary();
+        };
+        const removed = node.onRemoved;
+        node.onRemoved = function (...args) { ++generation; closeDialog(); return removed?.apply(this, args); };
         let list = [], cache = new Map(), generation = 0;
         function read() {
             if (!directWidget.value) return { version: 1, items: [] };
@@ -289,7 +311,8 @@ function installMain(node) {
         function render() {
             rows.replaceChildren();
             let state;
-            try { state = read(); } catch (error) { message.textContent = error.message; add.disabled = true; return; }
+            try { state = read(); } catch (error) { manage.textContent = 'Template (?)'; message.textContent = error.message; add.disabled = true; return; }
+            manage.textContent = `Template (${state.items.filter(item => item.template_id).length})`;
             add.disabled = state.items.length >= 8;
             state.items.forEach((item, index) => {
                 const row = element('div');

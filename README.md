@@ -41,7 +41,7 @@ ComfyUI 0.22.0 で動作を確認しています。Python 3.10 以上が必要�
 
 ### Main での直接選択
 
-両 Main の **Add template preset** で行を追加し、Template と Preset を選択できます。最大８行まで追加でき、矢印で順序変更、**Remove** で削除します。同じ組を複数回選ぶこともできます。個別ブロックの切り替えや Preset のない Template の選択には `Tag Template` を使ってください。
+両 Main の **Template (0)** を押すと管理ダイアログが開きます。括弧内は選択した Template の行数です。ダイアログの **Add template preset** で行を追加し、Template と Preset を選択できます。最大８行まで追加でき、矢印で順序変更、**Remove** で削除します。変更はその Main にすぐ保存されます。同じ組を複数回選ぶこともできます。個別ブロックの切り替えや Preset のない Template の選択には `Tag Template` を使ってください。
 
 各行の Live は実行時の最新 Preset を使います。**Create snapshot** でその時点の Template と Preset をワークフローに保存でき、**Update snapshot**／**Switch to Live** で更新・切り替えできます。Template や Preset が欠損・破損している場合、または選択途中の行がある場合はエラーになります。ライブラリ変更後は **Refresh library** で選択肢を更新し、プレビューを再更新してください。
 

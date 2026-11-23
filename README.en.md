@@ -41,7 +41,7 @@ For text-only output, use `Tag Main` instead of `Tag Main (Encode)` and connect 
 
 ### Direct selection in Main
 
-Use **Add template preset** on either Main to add up to eight Template/Preset pairs. Reorder rows with the arrows or remove them with **Remove**. The same pair can appear more than once. Use `Tag Template` for individual block selection or a Template without a Preset.
+Select **Template (0)** on either Main to open the management dialog; the number counts rows with a selected Template. Use **Add template preset** to add up to eight Template/Preset pairs. Reorder rows with the arrows or remove them with **Remove**. Changes are saved to that Main immediately. The same pair can appear more than once. Use `Tag Template` for individual block selection or a Template without a Preset.
 
 Each Live row uses the latest Preset at execution. **Create snapshot** saves the current Template and Preset in the workflow; **Update snapshot** and **Switch to Live** update or switch it. Missing or corrupt Templates or Presets and incomplete rows produce an error. After library changes, use **Refresh library** and update the preview again.
 
