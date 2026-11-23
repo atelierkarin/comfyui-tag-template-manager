@@ -267,8 +267,11 @@ function installMain(node) {
         const heading = element('strong', 'Direct template presets');
         const message = element('div', '');
         const rows = element('div'); rows.directRows = true;
+        Object.assign(rows.style, { display: 'grid', gap: '12px', marginTop: '16px' });
         const add = element('button', 'Add template preset');
         const refresh = element('button', 'Refresh library');
+        Object.assign(add.style, { margin: '12px 8px 0 0' });
+        Object.assign(refresh.style, { margin: '12px 8px 0 0' });
         const manage = element('button', 'Template (0)');
         manage.type = 'button';
         root.append(manage);
@@ -285,8 +288,9 @@ function installMain(node) {
                 background: '#252525', color: '#eee', border: '1px solid #777', borderRadius: '8px', padding: '16px' });
             dialog.setAttribute('aria-label', 'Template presets');
             const close = element('button', 'Close'); close.type = 'button'; close.onclick = closeDialog;
+            close.style.marginTop = '12px';
             dialog.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
-            dialog.append(heading, message, add, refresh, rows, close);
+            dialog.append(heading, message, add, refresh, close, rows);
             document.body.append(dialog); dialog.showModal();
             refreshLibrary();
         };
@@ -316,12 +320,16 @@ function installMain(node) {
             add.disabled = state.items.length >= 8;
             state.items.forEach((item, index) => {
                 const row = element('div');
+                Object.assign(row.style, { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px',
+                    padding: '12px', border: '1px solid #666', borderRadius: '6px', background: '#303030' });
                 const select = element('select');
+                Object.assign(select.style, { flex: '1 1 220px', minWidth: '0' });
                 select.add(new Option('Select template…', ''));
                 for (const entry of list) select.add(new Option(`${entry.name} (${entry.id})`, entry.id));
                 if (item.template_id && !list.some(entry => entry.id === item.template_id)) select.add(new Option(`Missing: ${item.template_id}`, item.template_id));
                 select.value = item.template_id || '';
                 const preset = element('select'); preset.add(new Option('Select preset…', ''));
+                Object.assign(preset.style, { flex: '1 1 180px', minWidth: '0' });
                 const template = item.mode === 'snapshot' ? item.template : cache.get(item.template_id);
                 for (const entry of template?.presets || []) preset.add(new Option(`${entry.name} (${entry.id})`, entry.id));
                 if (item.preset_id && !template?.presets?.some(entry => entry.id === item.preset_id)) preset.add(new Option(`Missing: ${item.preset_id}`, item.preset_id));
