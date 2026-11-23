@@ -164,6 +164,11 @@ class DirectMainNode extends MainNode {
 }
 await extension.beforeRegisterNodeDef(DirectMainNode, { name: 'TagTemplateManagerSingleMain' });
 const directMain = new DirectMainNode(); directMain.onNodeCreated();
+assert.ok(directMain.size[1] >= 520, 'new Main reserves room for direct-selection controls');
+directMain.size = [400, 300]; directMain.onConfigure();
+assert.ok(directMain.size[1] >= 520, 'restored Main expands if the saved size is too small');
+directMain.size = [600, 700]; directMain.onConfigure();
+assert.deepEqual(directMain.size, [600, 700], 'restoring preserves a larger user-chosen size');
 globalThis.testApi.fetchApi = async (path, options) => {
     if (path.endsWith('/templates')) return { ok: true, json: async () => ({ templates: [template], problems: [] }) };
     if (path.includes('/templates/')) return { ok: true, json: async () => template };
@@ -172,6 +177,7 @@ globalThis.testApi.fetchApi = async (path, options) => {
 await directMain._tagDirectRefresh();
 const add = directMain.panel.children.find(child => child.textContent === 'Add template preset');
 assert.ok(add);
+assert.ok(directMain.panel.children.indexOf(add) < directMain.panel.children.findIndex(child => child.textContent === 'Update preview'), 'direct selection appears before preview');
 add.onclick();
 let directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
 assert.equal(directState.items.length, 1);
@@ -181,15 +187,15 @@ row.children[0].value = template.id; await row.children[0].onchange();
 row = rows.children[0]; row.children[1].value = 'p'; row.children[1].onchange();
 directState = JSON.parse(directMain.widgets.find(w => w.name === 'direct_state').value);
 assert.equal(directState.items[0].preset_id, 'p');
-await directMain.panel.children[0].onclick();
+await directMain.panel.children.find(child => child.textContent === 'Update preview').onclick();
 assert.equal(JSON.parse(previewBody.direct_state).items[0].preset_id, 'p');
 let releasePreview;
 globalThis.testApi.fetchApi = async () => await new Promise(resolve => { releasePreview = resolve; });
-const pendingDirectPreview = directMain.panel.children[0].onclick();
+const pendingDirectPreview = directMain.panel.children.find(child => child.textContent === 'Update preview').onclick();
 directMain.widgets.find(w => w.name === 'text').value = 'changed while loading';
 releasePreview({ ok: true, json: async () => ({ text: 'old result' }) });
 await pendingDirectPreview;
-assert.notEqual(directMain.panel.children[3].textContent, 'old result');
+assert.notEqual(directMain.panel.children.find(child => child.tagName === 'pre').textContent, 'old result');
 globalThis.testApi.fetchApi = async (path, options) => {
     if (path.endsWith('/templates')) return { ok: true, json: async () => ({ templates: [template], problems: [] }) };
     if (path.includes('/templates/')) return { ok: true, json: async () => template };

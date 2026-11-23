@@ -258,7 +258,6 @@ function installMain(node) {
     const status = element('div', 'Preview is manual; update after edits or library changes.');
     const output = element('pre');
     Object.assign(output.style, { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
-    root.append(button, status, element('strong', 'Preview'), output);
     let sequence = 0;
     const directWidget = widget(node, 'direct_state');
     if (directWidget) {
@@ -369,6 +368,7 @@ function installMain(node) {
         node._tagDirectRefresh = refreshLibrary;
         render(); setTimeout(refreshLibrary, 0);
     }
+    root.append(button, status, element('strong', 'Preview'), output);
     button.onclick = async () => {
         const current = ++sequence;
         output.textContent = ''; status.textContent = 'Loading…';
@@ -405,13 +405,17 @@ app.registerExtension({
             const result = created?.apply(this, args);
             if (nodeData.name === 'TagTemplateManagerTemplate') installTemplate(this);
             else installMain(this);
-            this.setSize?.([Math.max(this.size?.[0] || 0, 340), Math.max(this.size?.[1] || 0, 300)]);
+            const minHeight = nodeData.name === 'TagTemplateManagerTemplate' ? 300 : 520;
+            this.setSize?.([Math.max(this.size?.[0] || 0, 340), Math.max(this.size?.[1] || 0, minHeight)]);
             return result;
         };
         if (nodeData.name === 'TagTemplateManagerTemplate' || nodeData.name === 'TagTemplateManagerSingleMain' || nodeData.name === 'TagTemplateManagerEncodedMain') {
             const configured = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function (...args) {
                 const result = configured?.apply(this, args);
+                if (nodeData.name !== 'TagTemplateManagerTemplate') {
+                    this.setSize?.([Math.max(this.size?.[0] || 0, 340), Math.max(this.size?.[1] || 0, 520)]);
+                }
                 setTimeout(() => this._tagTemplateRefresh?.(), 0);
                 setTimeout(() => this._tagDirectRefresh?.(), 0);
                 return result;
